@@ -1,145 +1,79 @@
 include("engines/init.jl")
+include("engines/factorized_embeddings.jl")
 
-### TEST FE 
-struct MLSurvDataset
-    data::Matrix
-    samples::Array 
-    genes::Array
-    biotypes::Array
-    labels::Array
-    survt::Array
-    surve::Array
-end 
-function MLSurvDataset(infilename)
-    infile = h5open(infilename, "r")
-    data = infile["data"][:,:] 
-    samples = infile["samples"][:]  
-    labels = infile["labels"][:]  
-    genes = infile["genes"][:]  
-    biotypes = infile["biotypes"][:]
-    survt = infile["survt"][:]  
-    surve = infile["surve"][:]  
-    close(infile)
-    return MLSurvDataset(data, samples, genes, biotypes, labels, survt, surve)
-end 
-function load_tcga_datasets(infiles)
-    
-    out_dict = Dict()
-    for infile in infiles
-        DataSet = MLSurvDataset(infile)
-        name_tag = split(infile,"_")[3]
-        out_dict["$(name_tag)"] = Dict("dataset"=>DataSet,
-        "name" => name_tag
-        ) 
-    end 
-    return out_dict
-end 
-
-
-function prep_FE(data::Matrix,patients::Array,genes::Array,tissues::Array, device=gpu)
-    n = length(patients)
-    m = length(genes)
-    # k = length(tissues)
-    values = Array{Float32,2}(undef, (1, n * m))
-    patient_index = Array{Int64,1}(undef, max(n * m, 1))
-    gene_index = Array{Int64,1}(undef, max(n * m, 1))
-    # tissue_index = Array{Int32,1}(undef, n * m)
-    for i in 1:n
-        for j in 1:m
-            index = (i - 1) * m + j 
-            values[1,index] = data[i,j]
-            patient_index[index] = i # Int
-            gene_index[index] = j # Int 
-            # tissue_index[index] = tissues[i] # Int 
-        end
-    end 
-    shfl = shuffle(collect(1:length(values)))
-    return (device(patient_index[shfl]), device(gene_index)[shfl]), device(vec(values[shfl]))
-end 
-
-
-struct FE_model
-    net::Flux.Chain
-    embed_1::Flux.Embedding
-    embed_2::Flux.Embedding
-    hl1::Flux.Dense
-    hl2::Flux.Dense
-    outpl::Flux.Dense
-    opt
-    lossf
-end
-
-function l2_penalty(model::FE_model)
-    return sum(abs2, model.embed_1.weight) + sum(abs2, model.embed_2.weight) + sum(abs2, model.hl1.weight) + sum(abs2, model.hl2.weight)
-end
-
-function mse_l2(model::FE_model, X, Y;weight_decay = 1e-6)
-    return Flux.mse(model.net(X), Y) + l2_penalty(model) * weight_decay
-end 
-
-
-function FE_model(params::Dict)
-    emb_size_1 = params["emb_size_1"]
-    emb_size_2 = params["emb_size_2"]
-    a = emb_size_1 + emb_size_2 
-    b, c, d, e, f = params["fe_hl1_size"], params["fe_hl2_size"], params["fe_hl3_size"] ,params["fe_hl4_size"] ,params["fe_hl5_size"] 
-    emb_layer_1 = gpu(Flux.Embedding(params["nsamples"], emb_size_1))
-    emb_layer_2 = gpu(Flux.Embedding(params["ngenes"], emb_size_2))
-    hl1 = gpu(Flux.Dense(a, b, relu))
-    hl2 = gpu(Flux.Dense(b, c, relu))
-    hl3 = gpu(Flux.Dense(c, d, relu))
-    hl4 = gpu(Flux.Dense(d, e, relu))
-    hl5 = gpu(Flux.Dense(e, f, relu))
-    outpl = gpu(Flux.Dense(c, 1, identity))
-    net = gpu(Flux.Chain(
-        Flux.Parallel(vcat, emb_layer_1, emb_layer_2),
-        hl1, hl2, outpl,
-        vec))
-    opt = Flux.ADAM(params["lr"])
-    lossf = mse_l2
-    FE_model(net, emb_layer_1, emb_layer_2, hl1, hl2, outpl, opt, lossf)
-end 
-function my_cor(X::AbstractVector, Y::AbstractVector)
-    sigma_X = std(X)
-    sigma_Y = std(Y)
-    mean_X = mean(X)
-    mean_Y = mean(Y)
-    cov = sum((X .- mean_X) .* (Y .- mean_Y)) / length(X)
-    return cov / sigma_X / sigma_Y
-end 
+### TEST FE Leucegene
+LGN_data = MLSurvDataset("Data/LEUCEGENE/LGN_AML_tpm_n300_btypes_labels_surv.h5")
+### TEST FE TCGA  
 infile = h5open("Data/GDC_processed/TCGA_TPM_lab.h5")
-data = log10.(infile["data"][:,:] .+ 1)
+TCGA_data = log10.(infile["data"][:,:] .+ 1)
 labs = string.(infile["labels"][:])
 patients = string.(infile["rows"][:])
 genes = string.(infile["cols"][:]) 
 close(infile)
 
-BRCA = load_tcga_datasets(["Data/TCGA_datasets/TCGA_BRCA_tpm_n1049_btypes_labels_surv.h5"])["BRCA"]
-CDS = BRCA["dataset"].biotypes .== "protein_coding"
-TCGA_data = data[:,CDS]
-projects_num = [findall(unique(labs) .== X)[1] for X in labs] 
+### sanity check with t-sne 
+size(TCGA_data)
+# X_embed_tsne = tsne(TCGA_data, 2, 50, 3000,30, verbose = true, progress = true)
 
-X, Y = prep_FE(TCGA_data, patients, genes[CDS], projects_num);
+tcga_datasets_list = ["Data/TCGA_datasets/$(x)" for x in readdir("Data/TCGA_OV_BRCA_LGG/") ]
+TCGA_datasets = load_tcga_datasets(tcga_datasets_list)
+BRCA_data = TCGA_datasets["BRCA"]
+# LGG_data = TCGA_datasets["LGG"]
+# OV_data = TCGA_datasets["OV"]
+# TCGALAML_data = TCGA_datasets["LAML"]
+# Composite_TCGA_data = vcat(BRCA_data["dataset"].data, LGG_data["dataset"].data, OV_data["dataset"].data, TCGALAML_data["dataset"].data)
+# X_data =Composite_TCGA_data .- mean(Composite_TCGA_data, dims =1)
+# tcga_labels = vcat(fill("BRCA", size(BRCA_data["dataset"].data)[1]),
+# fill("LGG", size(LGG_data["dataset"].data)[1]),
+# fill("OV", size(OV_data["dataset"].data)[1]),
+# fill("TCGA-LAML", size(TCGALAML_data["dataset"].data)[1]))
+# CDS = BRCA_data["dataset"].biotypes .== "protein_coding"
+# Composite_TCGA_data = Composite_TCGA_data[:,CDS]
+#projects_num = [findall(unique(labs) .== X)[1] for X in labs] 
+# X_embed_tsne = tsne(Composite_TCGA_data, 2, 500, 3000,30, verbose = true, progress = true)
+# TSNE_df = DataFrame(:TSNE1 => X_embed_tsne[:,1], :TSNE2 => X_embed_tsne[:,2], :group => tcga_labels)
+# p = AlgebraOfGraphics.data(TSNE_df) * mapping(:TSNE1, :TSNE2, color = :group, marker=:group)
+# draw(p)
+CDS = BRCA_data["dataset"].biotypes .== "protein_coding"
+TCGA_genes = genes[CDS]
+# X, Y = prep_FE(TCGA_data, patients, genes[CDS]);
+# X, Y = prep_FE(LGN_data.data, LGN_data.samples, LGN_data.genes);
+X_data = TCGA_data[:,CDS] .- mean(TCGA_data[:,CDS], dims = 1)
+X, Y = prep_FE(X_data, collect(1:size(X_data)[1]), TCGA_genes );
 
-batchsize = 500_000
+batchsize = 40_000
 step_size_cb = 500 # steps interval between each dump call
 nminibatches = Int(floor(length(Y) / batchsize))
 
-params = Dict( "nsteps" => 10_000,
-    "emb_size_1" => 50,
+params = Dict( "nsteps" => 40_000,
+    "emb_size_1" => 2,
     "emb_size_2" => 50,
-    "fe_hl1_size" => 250,
-    "fe_hl2_size" => 150,
-    "fe_hl3_size" => 100,
-    "fe_hl4_size" => 50,
-    "fe_hl5_size" => 10,
-    
-    "nsamples" =>length(patients),
-    "ngenes"=> sum(CDS), 
-    "lr" => 1e-3,
-    "wd" => 1e-5)
+    "fe_hl1_size" => 50,
+    "fe_hl2_size" => 50,
+    # "fe_hl3_size" => 100,
+    # "fe_hl4_size" => 50,
+    # "fe_hl5_size" => 10,
+
+    "nsamples" =>size(TCGA_data)[1],
+    "ngenes"=> length(genes[CDS]), 
+    "lr" => 1e-2,
+    "wd" => 1e-3)
 ## 
 model = FE_model(params);
+
+## plotting embed directly 
+patient_FE = cpu(model.embed_1.weight) 
+
+fig = Figure(size = (1024,512));
+ax2 = Axis(fig[1,1],title="Before-training embedding", xlabel = "Patient-FE-1", ylabel="Patient-FE-2", aspect = 1);
+markers = [:xcross, :hexagon, :utriangle, :cross]
+for (i, group_lab) in enumerate(unique(labs))
+    group = labs .== group_lab
+    plot!(ax2, patient_FE[1,group],patient_FE[2,group], marker = markers[i%4 + 1], label = group_lab)
+end 
+fig[1,2] = axislegend(ax2)
+fig
+
 
 tr_loss = []
 tr_epochs = []
@@ -150,17 +84,17 @@ nminibatches = Int(floor(length(Y) / batchsize))
 for iter in 1:params["nsteps"]
     ps = Flux.params(model.net)
     cursor = (iter -1)  % nminibatches + 1
-    # if cursor == 1 
-    #     shuffled_ids = shuffle(collect(1:length(Y))) # very inefficient
-    # end 
+    if cursor == 1 
+        shuffled_ids = shuffle(collect(1:length(Y))) # very inefficient
+    end 
     mb_ids = collect((cursor -1) * batchsize + 1: min(cursor * batchsize, length(Y)))
-    # ids = shuffled_ids[mb_ids]
-    X_, Y_ = (X[1][mb_ids],X[2][mb_ids]), Y[mb_ids]
+    ids = shuffled_ids[mb_ids]
+    X_, Y_ = (X[1][ids],X[2][ids]), Y[ids]
     
     # dump_cb(model, params, iter + restart)
     
     gs = gradient(ps) do 
-        mse_l2(model, X_, Y_, weight_decay = params["wd"])
+        Flux.mse(model.net(X_), Y_) + params["wd"] * l2_penalty(model)
     end
     # if params.clip 
     #     g_norm = norm(gs)
@@ -176,19 +110,51 @@ for iter in 1:params["nsteps"]
     Flux.update!(opt,ps, gs)
     push!(tr_loss, lossval)
     push!(tr_epochs, Int(floor((iter - 1)  / nminibatches)) + 1)
-    println("epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson")
+    println("$(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson")
 end
 
 OUTS_ = model.net((X[1][1:500_000], X[2][1:500_000]))
 Y_ = Y[1:500_000]
+pearson = my_cor(OUTS_, Y_)
 fig = Figure();
-ax1 = Axis(fig[1,1], xticks = collect(0:5), yticks = collect(0:5));
+ax1 = Axis(fig[1,1], title = "Gene expression reconstruction of FE model on TCGA data \n Pearson R = $(round(pearson,digits = 4))", ylabel = "Real Log TPM count", xlabel = "FE predicted Log TPM count", xticks = collect(0:5), yticks = collect(0:5));
 hexbin!(ax1, cpu(OUTS_),cpu(Y_), cellsize = 0.05, colorscale = log10)
 #Colorbar(fig[1,2])
 lines!(ax1, [0,5],[0,5], linestyle=:dash, color =:black)
 ax1.aspect = 1
 #resize_to_layout!(fig)
 fig
+CairoMakie.save("figures/FE_reconstruction.pdf", fig)
+CairoMakie.save("figures/FE_reconstruction.png", fig)
 TCGA_datas
 
-model.embed_1
+cpu(model.embed_1.weight)
+umap_model = UMAP_(TCGA_data', 2;min_dist = 0.99, n_neighbors = 200);
+
+## plotting embed using UMAP 
+fig = Figure(size = (512,512));
+ax2 = Axis(fig[1,1], xlabel = "UMAP-1", ylabel="UMAP-2", aspect = 1);
+for group_lab in unique(labs)
+    group = labs .== group_lab
+    plot!(umap_model.embedding[1,group],umap_model.embedding[2,group], label = group_lab)
+end 
+#axislegend(ax2)
+fig
+
+## plotting embed directly 
+# trained_patient_FE = cpu(model.embed_1.weight) 
+trained_patient_FE = cpu(model.net[1][1].weight)
+# fig = Figure(size = (1024,512));
+ax2 = Axis(fig[1,3],title="trained 2-d embedding", xlabel = "Patient-FE-1", ylabel="Patient-FE-2", aspect = 1);
+markers = [:xcross, :hexagon, :utriangle, :cross]
+for (i, group_lab) in enumerate(unique(labs))
+    group = labs .== group_lab
+    plot!(ax2, trained_patient_FE[1,group], trained_patient_FE[2,group], marker = markers[i%4 + 1], label = group_lab)
+end 
+fig[1,4] = axislegend(ax2)
+fig
+CairoMakie.save("figures/trained_2D_factorized_embedding.pdf", fig)
+CairoMakie.save("figures/trained_2D_factorized_embedding.png", fig)
+
+trained_patient_FE[1,1]
+patient_FE[1,1]
