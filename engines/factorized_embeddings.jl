@@ -106,3 +106,68 @@ function my_cor(X::AbstractVector, Y::AbstractVector)
     cov = sum((X .- mean_X) .* (Y .- mean_Y)) / length(X)
     return cov / sigma_X / sigma_Y
 end 
+
+function train_SGD!(params, X, Y, model)
+    batchsize = params["batchsize"]
+    nminibatches = Int(floor(length(Y) / batchsize))
+    tr_loss, tr_epochs, tr_cor = [], [], []
+    opt = Flux.ADAM(params["lr"])
+    shuffled_ids = shuffle(collect(1:length(Y))) # very inefficient
+    for iter in 1:params["nsteps"]
+        # Stochastic gradient descent with minibatches
+        cursor = (iter -1)  % nminibatches + 1
+        if cursor == 1 
+            shuffled_ids = shuffle(collect(1:length(Y))) # very inefficient
+        end 
+        mb_ids = collect((cursor -1) * batchsize + 1: min(cursor * batchsize, length(Y)))
+        ids = shuffled_ids[mb_ids]
+        X_, Y_ = (X[1][ids],X[2][ids]), Y[ids]
+        ps = Flux.params(model.net)
+        # dump_cb(model, params, iter + restart)
+        gs = gradient(ps) do 
+            Flux.mse(model.net(X_), Y_) + params["l2"] * l2_penalty(model)
+        end
+        lossval = Flux.mse(model.net(X_), Y_) + params["l2"] * l2_penalty(model)
+        pearson = my_cor(model.net(X_), Y_)
+        Flux.update!(opt,ps, gs)
+        push!(tr_cor, pearson)
+        push!(tr_loss, lossval)
+        push!(tr_epochs, Int(ceil(iter / nminibatches)))
+        println("$(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson")
+    end
+    return tr_epochs, tr_loss, tr_cor
+end 
+
+function generate_patient_embedding(X, Y, params, tissue_labels)
+    ## init model
+    model = FE_model(params);
+
+    # train loop
+    tr_epochs, tr_loss, tr_cor = train_SGD!(params, X, Y, model)
+
+    reconstruction_fig = plot_FE_reconstruction(model, X, Y)
+    CairoMakie.save("$(params["outpath"])/$(params["modelid"])_FE_reconstruction.pdf", reconstruction_fig)
+    CairoMakie.save("$(params["outpath"])/$(params["modelid"])_FE_reconstruction.png", reconstruction_fig)
+
+
+    ## plotting embed directly 
+    patient_embed_fig = Figure(size = (1024,800));
+    trained_patient_FE = cpu(model.net[1][1].weight)
+    patient_embed_fig = plot_patient_embedding(trained_patient_FE, patient_embed_fig, tissue_labels, "trained 2-d embedding", 1) 
+    CairoMakie.save("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.pdf", patient_embed_fig)
+    CairoMakie.save("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.png", patient_embed_fig)
+    
+    ### plotting training curves
+    training_curve_fig = Figure(size = (512,512));
+    ax1 = Axis(training_curve_fig[1,1], title = "Training Pearson correlation by step",
+    xlabel = "step", ylabel = "Pearson correlation")
+    ax2 = Axis(training_curve_fig[2,1], title = "Training loss by step",
+    xlabel = "step", ylabel = "loss")
+    lines!(ax1, collect(1:size(tr_cor)[1]), Float32.(tr_cor), color=Float32.(tr_epochs))
+    lines!(ax2, collect(1:size(tr_loss)[1]), log10.(Float32.(tr_loss)))
+
+    CairoMakie.save("$(params["outpath"])/$(params["modelid"])_training_curve_factorized_embedding.pdf", training_curve_fig)
+    CairoMakie.save("$(params["outpath"])/$(params["modelid"])_training_curve_factorized_embedding.png", training_curve_fig)
+
+    return model, tr_epochs,tr_loss, tr_cor
+end 

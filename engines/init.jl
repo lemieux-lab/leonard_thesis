@@ -32,5 +32,4 @@ function set_dirs(basedir="./RES")
 
     return outpath, session_id
 end
-
 # end 
