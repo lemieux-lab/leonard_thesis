@@ -61,16 +61,18 @@ struct FE_model
     net::Flux.Chain
     embed_1::Flux.Embedding
     embed_2::Flux.Embedding
-    hl1::Flux.Dense
-    hl2::Flux.Dense
+    hls
     outpl::Flux.Dense
     opt
     lossf
 end
 
-function l2_penalty(model::FE_model)
-    return sum(abs2, model.embed_1.weight) + sum(abs2, model.embed_2.weight) + sum(abs2, model.hl1.weight) + sum(abs2, model.hl2.weight)
-end
+# function l2_penalty(model::FE_model)
+#     return sum(abs2, model.embed_1) + sum(abs2, model.embed_2) + sum.(abs2, model.hls)
+# end
+# function l2_penalty(ps::Flux.params)
+#     return sum(p -> sum(abs2, p), ps)
+# end 
 
 function mse_l2(model::FE_model, X, Y;weight_decay = 1e-6)
     return Flux.mse(model.net(X), Y) + l2_penalty(model) * weight_decay
@@ -81,22 +83,27 @@ function FE_model(params::Dict)
     emb_size_1 = params["emb_size_1"]
     emb_size_2 = params["emb_size_2"]
     a = emb_size_1 + emb_size_2 
-    b, c = params["fe_hl1_size"], params["fe_hl2_size"]#, params["fe_hl3_size"] ,params["fe_hl4_size"] ,params["fe_hl5_size"] 
+    # b, c = params["fe_hl1_size"], params["fe_hl2_size"]#, params["fe_hl3_size"] ,params["fe_hl4_size"] ,params["fe_hl5_size"] 
     emb_layer_1 = gpu(Flux.Embedding(params["nsamples"], emb_size_1))
     emb_layer_2 = gpu(Flux.Embedding(params["ngenes"], emb_size_2))
-    hl1 = gpu(Flux.Dense(a, b, relu))
-    hl2 = gpu(Flux.Dense(b, c, relu))
+    hlayers = []
+    for (i,layer_size) in enumerate(params["fe_layers_size"][1:end])
+        i == 1 ? inpsize = a : inpsize = params["fe_layers_size"][i - 1]
+        push!(hlayers, Flux.Dense(inpsize, layer_size, relu))
+    end 
+    # hl1 = gpu(Flux.Dense(a, b, relu))
+    # hl2 = gpu(Flux.Dense(b, c, relu))
     # hl3 = gpu(Flux.Dense(c, d, relu))
     # hl4 = gpu(Flux.Dense(d, e, relu))
     # hl5 = gpu(Flux.Dense(e, f, relu))
-    outpl = gpu(Flux.Dense(c, 1, identity))
+    outpl = gpu(Flux.Dense(params["fe_layers_size"][end], 1, identity))
     net = gpu(Flux.Chain(
         Flux.Parallel(vcat, emb_layer_1, emb_layer_2),
-        hl1, hl2, outpl,
+        hlayers..., outpl,
         vec))
     opt = Flux.ADAM(params["lr"])
     lossf = mse_l2
-    FE_model(net, emb_layer_1, emb_layer_2, hl1, hl2, outpl, opt, lossf)
+    FE_model(net, emb_layer_1, emb_layer_2, hlayers, outpl, opt, lossf)
 end 
 function my_cor(X::AbstractVector, Y::AbstractVector)
     sigma_X = std(X)
@@ -107,7 +114,43 @@ function my_cor(X::AbstractVector, Y::AbstractVector)
     return cov / sigma_X / sigma_Y
 end 
 
-function train_SGD!(params, X, Y, model)
+function train_SGD!(params, X, Y, model; printstep = 100)
+    start_timer = now()
+    batchsize = params["batchsize"]
+    nminibatches = Int(floor(length(Y) / batchsize))
+    tr_loss, tr_epochs, tr_cor, tr_elapsed = [], [], [], []
+    opt = Flux.ADAM(params["lr"])
+    shuffled_ids = collect(1:length(Y)) # very inefficient
+    for iter in 1:params["nsteps"]
+        # Stochastic gradient descent with minibatches
+        cursor = (iter -1)  % nminibatches + 1
+        if cursor == 1 
+            shuffled_ids = shuffle(collect(1:length(Y))) # very inefficient
+        end 
+        mb_ids = collect((cursor -1) * batchsize + 1: min(cursor * batchsize, length(Y)))
+        ids = shuffled_ids[mb_ids]
+        X_, Y_ = (X[1][ids],X[2][ids]), Y[ids]
+        ps = Flux.params(model.net)
+        # dump_cb(model, params, iter + restart)
+        gs = gradient(ps) do 
+            Flux.mse(model.net(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
+        end
+        lossval = Flux.mse(model.net(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
+        pearson = my_cor(model.net(X_), Y_)
+        Flux.update!(opt,ps, gs)
+        push!(tr_cor, pearson)
+        push!(tr_loss, lossval)
+        push!(tr_epochs, Int(ceil(iter / nminibatches)))
+        push!(tr_elapsed, (now() - start_timer).value / 1000 )
+        println("$(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson ELAPSED: $((now() - start_timer).value / 1000 )")
+        if iter % printstep == 0
+            CSV.write("$(params["outpath"])/$(params["modelid"])_computing_times", DataFrame(:tr_epochs=>tr_epochs, :tr_loss=>tr_loss, :tr_elapsed=>tr_elapsed))
+        end 
+    end
+    return tr_epochs, tr_loss, tr_cor, tr_elapsed
+end 
+
+function train_embed_SGD!(params, X, Y, model)
     batchsize = params["batchsize"]
     nminibatches = Int(floor(length(Y) / batchsize))
     tr_loss, tr_epochs, tr_cor = [], [], []
@@ -122,7 +165,7 @@ function train_SGD!(params, X, Y, model)
         mb_ids = collect((cursor -1) * batchsize + 1: min(cursor * batchsize, length(Y)))
         ids = shuffled_ids[mb_ids]
         X_, Y_ = (X[1][ids],X[2][ids]), Y[ids]
-        ps = Flux.params(model.net)
+        ps = Flux.params(model.net[1][1])
         # dump_cb(model, params, iter + restart)
         gs = gradient(ps) do 
             Flux.mse(model.net(X_), Y_) + params["l2"] * l2_penalty(model)
@@ -143,7 +186,7 @@ function generate_patient_embedding(X, Y, params, tissue_labels)
     model = FE_model(params);
 
     # train loop
-    tr_epochs, tr_loss, tr_cor = train_SGD!(params, X, Y, model)
+    tr_epochs, tr_loss, tr_cor, tr_elapsed = train_SGD!(params, X, Y, model)
 
     reconstruction_fig = plot_FE_reconstruction(model, X, Y)
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_FE_reconstruction.pdf", reconstruction_fig)
