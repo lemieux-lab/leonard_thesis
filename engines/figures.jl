@@ -1,3 +1,34 @@
+function plot_UMAP(TCGA_data,labs)
+
+    umap_model = UMAP_(TCGA_data', 2;min_dist = 0.99, n_neighbors = 200);
+
+    ## plotting embed using UMAP 
+    fig = Figure(size = (512,512));
+    ax2 = Axis(fig[1,1], xlabel = "UMAP-1", ylabel="UMAP-2", aspect = 1);
+    for group_lab in unique(labs)
+        group = labs .== group_lab
+        plot!(umap_model.embedding[1,group],umap_model.embedding[2,group], label = group_lab)
+    end 
+    return fig 
+end 
+
+function plot_interactive(trained_FE, params, patients, labels)
+    trained_FE_mat = cpu(trained_FE.net[1][1].weight)
+    # X_tr = fit_transform_pca(trained_FE_mat,2)
+    FE_to_plot = DataFrame(:ids => patients, :EMBED1=> trained_FE_mat[1,:], :EMBED2=>trained_FE_mat[2,:], :group=>labels) 
+    # FE_to_plot = DataFrame(:EMBED1=> X_tr[1,:], :EMBED2=>X_tr[2,:], :group=>labels) 
+
+    FE_to_plot = innerjoin(FE_to_plot, DataFrame(:group => unique(labels), :type=>[i%3 for i in 1:size(unique(labels))[1]]),on = :group)
+    CSV.write("interactive_figures/$(params["modelid"])_FE_2D_embedding.csv", FE_to_plot)
+    P = PlotlyJS.plot(
+        FE_to_plot, x=:EMBED1, y=:EMBED2, color=:group, symbol = :type, ids = :ids,
+        kind = "scatter", mode = "markers", 
+            Layout(
+                title = "FE 2D visualisation by subgroup"
+
+    ))
+    PlotlyJS.savefig(P, "interactive_figures/$(params["modelid"])_FE_2D_visualisation.html")
+end 
 
 function plot_patient_embedding(patient_FE, fig, tissue_labels, title, i)
     
@@ -11,13 +42,13 @@ function plot_patient_embedding(patient_FE, fig, tissue_labels, title, i)
     return fig
 end 
 
-function plot_FE_reconstruction(model, X, Y)
+function plot_FE_reconstruction(model, X, Y;modelID="")
     OUTS_ = model.net((X[1][1:500_000], X[2][1:500_000]))
     Y_ = Y[1:500_000]
     pearson = my_cor(OUTS_, Y_)
     fig = Figure(size = (512,512));
     ax1 = Axis(fig[1,1], 
-        title = "Gene expression reconstruction of FE model on TCGA data \n Pearson R = $(round(pearson,digits = 4))", 
+        title = "Gene expression reconstruction of FE model on TCGA data \nmodel: $modelID \n Pearson R = $(round(pearson,digits = 4))", 
         ylabel = "Real Log TPM count", xlabel = "FE predicted Log TPM count")
         #limits = (-2,2,-2,2),
         #xticks = collect(-2:2), yticks = collect(-2:2));

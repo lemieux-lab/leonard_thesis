@@ -8,12 +8,13 @@ using DataFrames
 using JSON
 using HDF5
 using Statistics
-using Flux 
 using CairoMakie 
+using PlotlyJS
 using Random
 using Dates
 using AlgebraOfGraphics
 using CUDA
+using Flux 
 using SHA
 using BSON 
 using Distributions

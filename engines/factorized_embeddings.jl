@@ -114,7 +114,7 @@ function my_cor(X::AbstractVector, Y::AbstractVector)
     return cov / sigma_X / sigma_Y
 end 
 
-function train_SGD!(params, X, Y, model; printstep = 100)
+function train_SGD!(params, X, Y, model; printstep = 10_000)
     start_timer = now()
     batchsize = params["batchsize"]
     nminibatches = Int(floor(length(Y) / batchsize))
@@ -182,13 +182,14 @@ function train_embed_SGD!(params, X, Y, model)
 end 
 
 function generate_patient_embedding(X, Y, params, tissue_labels)
+    bson("$(params["outpath"])/$(params["modelid"])_params.bson", params)
     ## init model
     model = FE_model(params);
 
     # train loop
     tr_epochs, tr_loss, tr_cor, tr_elapsed = train_SGD!(params, X, Y, model)
 
-    reconstruction_fig = plot_FE_reconstruction(model, X, Y)
+    reconstruction_fig = plot_FE_reconstruction(model, X, Y, modelID=params["modelid"])
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_FE_reconstruction.pdf", reconstruction_fig)
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_FE_reconstruction.png", reconstruction_fig)
 
@@ -196,17 +197,17 @@ function generate_patient_embedding(X, Y, params, tissue_labels)
     ## plotting embed directly 
     patient_embed_fig = Figure(size = (1024,800));
     trained_patient_FE = cpu(model.net[1][1].weight)
-    patient_embed_fig = plot_patient_embedding(trained_patient_FE, patient_embed_fig, tissue_labels, "trained 2-d embedding", 1) 
+    patient_embed_fig = plot_patient_embedding(trained_patient_FE, patient_embed_fig, tissue_labels, "trained 2-d embedding\n$(params["modelid"])", 1) 
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.pdf", patient_embed_fig)
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.png", patient_embed_fig)
     
     ### plotting training curves
     training_curve_fig = Figure(size = (512,512));
-    ax1 = Axis(training_curve_fig[1,1], title = "Training Pearson correlation by step",
+    ax1 = Axis(training_curve_fig[1,1], title = "Training Pearson correlation by step\n$(params["modelid"])",
     xlabel = "step", ylabel = "Pearson correlation")
     ax2 = Axis(training_curve_fig[2,1], title = "Training loss by step",
-    xlabel = "step", ylabel = "loss")
-    lines!(ax1, collect(1:size(tr_cor)[1]), Float32.(tr_cor), color=Float32.(tr_epochs))
+    xlabel = "step", ylabel = "loss (log scale)")
+    lines!(ax1, collect(1:size(tr_cor)[1]), Float32.(tr_cor))
     lines!(ax2, collect(1:size(tr_loss)[1]), log10.(Float32.(tr_loss)))
 
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_training_curve_factorized_embedding.pdf", training_curve_fig)
