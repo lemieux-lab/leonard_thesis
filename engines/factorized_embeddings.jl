@@ -84,7 +84,7 @@ function FE_model(params::Dict)
     emb_size_2 = params["emb_size_2"]
     a = emb_size_1 + emb_size_2 
     # b, c = params["fe_hl1_size"], params["fe_hl2_size"]#, params["fe_hl3_size"] ,params["fe_hl4_size"] ,params["fe_hl5_size"] 
-    emb_layer_1 = gpu(Flux.Embedding(params["nsamples"], emb_size_1))
+    emb_layer_1 = gpu(Flux.Embedding(params["nsamples_train"], emb_size_1))
     emb_layer_2 = gpu(Flux.Embedding(params["ngenes"], emb_size_2))
     hlayers = []
     for (i,layer_size) in enumerate(params["fe_layers_size"][1:end])
@@ -145,8 +145,12 @@ function train_SGD!(params, X, Y, model; printstep = 10_000)
         println("$(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson ELAPSED: $((now() - start_timer).value / 1000 )")
         if iter % printstep == 0
             CSV.write("$(params["outpath"])/$(params["modelid"])_computing_times", DataFrame(:tr_epochs=>tr_epochs, :tr_loss=>tr_loss, :tr_elapsed=>tr_elapsed))
+            # save model 
+            bson("$(params["outpath"])/$(params["modelid"])_model_$(iter).bson", Dict("model"=> cpu(model.net)))
         end 
     end
+    # save model 
+    bson("$(params["outpath"])/$(params["modelid"])_model_$(params["nsteps"]).bson", Dict("model"=> cpu(model.net)))
     return tr_epochs, tr_loss, tr_cor, tr_elapsed
 end 
 
@@ -214,4 +218,38 @@ function generate_patient_embedding(X, Y, params, tissue_labels)
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_training_curve_factorized_embedding.png", training_curve_fig)
 
     return model, tr_epochs,tr_loss, tr_cor
+end 
+function reset_embedding_layer(trained_FE, params)
+    hlayers = deepcopy(trained_FE.net[2:end])
+    test_FE = Flux.Chain(
+        Flux.Parallel(vcat, 
+            Flux.Embedding(params["nsamples_test"],params["emb_size_1"]),
+            deepcopy(trained_FE.net[1][2])
+        ),
+        hlayers...
+    ) |> gpu
+    return test_FE    
+end 
+
+function do_inference(trained_FE, params, X_test, Y_test)
+    # reset patient embedding layer
+    inference_model = reset_embedding_layer(trained_FE, params)
+    # do inference 
+    batchsize = params["batchsize"]
+    nminibatches = Int(floor(length(Y_test) / batchsize))
+    opt = Flux.ADAM(params["lr"])
+    for iter in 1:params["nsteps_inference"]
+        cursor = (iter -1)  % nminibatches + 1
+        mb_ids = collect((cursor -1) * batchsize + 1: min(cursor * batchsize, length(Y_test)))
+        X_, Y_ = (X_test[1][mb_ids],X_test[2][mb_ids]), Y_test[mb_ids]
+        ps = Flux.params(inference_model[1][1])
+        gs = gradient(ps) do 
+            Flux.mse(inference_model(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
+        end
+        lossval = Flux.mse(inference_model(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
+        pearson = my_cor(inference_model(X_), Y_)
+        Flux.update!(opt,ps, gs)
+        println("$(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson ")
+    end 
+    return inference_model
 end 
