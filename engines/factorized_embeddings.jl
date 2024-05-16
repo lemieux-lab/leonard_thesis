@@ -235,10 +235,27 @@ function reset_embedding_layer(trained_FE, params, size)
     return test_FE    
 end 
 
-function do_inference(trained_FE, params, test_data, test_patients, genes)
+
+function reset_embedding_layer_sample_init(FE_net, params, test_size)
+    hlayers = deepcopy(FE_net[2:end])
+    embed_layer_train = FE_net[1][1].weight
+    x_ids = collect(1:size(embed_layer_train)[2])
+    shuffled_ids = shuffle(x_ids)
+    init_embed = embed_layer_train[:,shuffled_ids[1:test_size]]
+    test_FE = Flux.Chain(
+        Flux.Parallel(vcat, 
+            Flux.Embedding(init_embed),
+            deepcopy(FE_net[1][2])
+        ),
+        hlayers...
+    ) |> gpu
+    return test_FE    
+end 
+
+function do_inference(trained_FE, params, test_data, test_patients, genes; pre_trained_init = true)
     X_test, Y_test = prep_FE(test_data, test_patients, genes);
     # reset patient embedding layer
-    inference_model = reset_embedding_layer(trained_FE, params, size(test_data)[1])
+    pre_trained_init ? inference_model = reset_embedding_layer_sample_init(trained_FE, params, size(test_data)[1]) : inference_model = reset_embedding_layer(trained_FE, params, size(test_data)[1]) 
     # do inference 
     batchsize = params["batchsize"]
     nminibatches = Int(floor(length(Y_test) / batchsize))

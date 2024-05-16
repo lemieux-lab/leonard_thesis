@@ -23,7 +23,7 @@ generate_params(X_data) = return Dict(
     ## optim infos 
     "lr" => 1e-2, "l2" => 1e-7,"nsteps" => 20_000, "nsteps_inference" => 10_000, "batchsize" => 40_000,
     ## model infos
-    "emb_size_1" => 2, "emb_size_2" => 50, "fe_layers_size"=> [25]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
+    "emb_size_1" => 2, "emb_size_2" => 50, "fe_layers_size"=> [250, 75, 50, 25, 10]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
     )
 # train whole dataset 
 # params = generate_params(X_data)
@@ -40,7 +40,10 @@ bson("$(params["outpath"])/$(params["modelid"])_train_test_ids.bson",
 trained_FE,  tr_epochs , tr_loss, tr_cor =  generate_patient_embedding(train_data, patients[train_ids], genes[CDS], params, labels[train_ids])
 
 # inference         
-test_model = do_inference(trained_FE.net, params, test_data,  patients[test_ids], genes[CDS] )
+#test_model = do_inference(trained_FE.net, params, test_data,  patients[test_ids], genes[CDS] )
+# inference with pre-training init embed  
+test_model = do_inference(trained_FE.net, params, test_data,  patients[test_ids], genes[CDS], pre_trained_init = true)
+
 # plot final 2D patient embed (train + test)
 train_test_2d_fig = plot_train_test_patient_embed(trained_FE, test_model, labels, train_ids, test_ids)
 CairoMakie.save("$(params["outpath"])/$(params["modelid"])_2D_embedding_train_test.png", train_test_2d_fig)
@@ -50,8 +53,9 @@ CairoMakie.save("$(params["outpath"])/$(params["modelid"])_2D_embedding_train_te
 ## PlotlyJS
 plot_interactive(params, cpu(trained_FE.net[1][1].weight), cpu(test_model[1][1].weight), train_ids, test_ids,  labels)
 
-sample_profile = test_data[250,:]
-grid = collect(-25:1:25) ./ 10
+sample_profile = test_data[125,:]
+gen_grid(nb_p, span) = collect(span[1]:(span[2] - span[1]) / nb_p:span[2]) 
+grid = gen_grid(100,[-3,3])
 grid_vals = zeros(size(grid)[1] , size(grid)[1])
 gene_embed = trained_FE.net[1][2](gpu(collect(1:size(genes[CDS])[1])))
 Xs = []
@@ -68,13 +72,8 @@ for i in 1:size(grid)[1]
     end 
 end 
 fig = Figure(size = (512,512));
-ax = Axis(fig[1,1], title = "Heatmap", xlabel = "EMBED-1", ylabel = "EMBED-2" )
-scatter!(ax, Float64.(Xs), Float64.(Ys) , color=vec(grid_vals), colormap=:viridis)
-# fig[1,2] = Colorbar(scat)
-Xs[vec(grid_vals) .== maximum(vec(grid_vals))]
-Ys[vec(grid_vals) .== maximum(vec(grid_vals))]
-# Xs[vec(grid_vals) .== maximum(vec(grid_vals))]
-# Ys[vec(grid_vals) .== maximum(vec(grid_vals))]
-# grid_vals[]
+ax = Axis(fig[1,1], title = "Contour", xlabel = "EMBED-1", ylabel = "EMBED-2" )
 # grid_vals
+co = contourf!(ax, grid, grid, grid_vals', levels = 20)
+Colorbar(fig[1,2], co)
 fig
