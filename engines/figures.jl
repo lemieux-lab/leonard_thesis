@@ -32,6 +32,18 @@ function plot_UMAP(TCGA_data,labs)
     end 
     return fig 
 end 
+function plot_interactive(params, train_embed, test_embed, train_ids, test_ids,  tissue_labels)
+    colors_dict = Dict([(lab, RGBf(rand(), rand(), rand())) for lab in unique(tissue_labels)])    
+    traces = [PlotlyJS.scatter(x=train_embed[1,tissue_labels[train_ids] .== group_lab], y=train_embed[2,tissue_labels[train_ids] .== group_lab], marker = attr(color= colors_dict[group_lab]), mode = "markers", name = group_lab) for group_lab in unique(tissue_labels)]
+    [push!(traces, PlotlyJS.scatter(x=test_embed[1,tissue_labels[test_ids] .== group_lab], y=test_embed[2,tissue_labels[test_ids] .== group_lab], marker = attr(symbol="diamond", line_width=1,color= colors_dict[group_lab]), mode = "markers", name = "TEST - $(group_lab)")) for group_lab in unique(tissue_labels)]
+    P = PlotlyJS.plot(traces, 
+        Layout(title = "Patient Factorized Embedding 2D with train and test samples\nmodel ID: $(params["modelid"])",
+        yaxis = attr(showgrid=true, gridwidth=1, gridcolor="black", zeroline=true, zerolinewidth=1, zerolinecolor="black"),
+        xaxis = attr(showgrid=true, gridwidth=1, gridcolor="black", zeroline=true, zerolinewidth=1, zerolinecolor="black"),
+        plot_bgcolor = :white, 
+    ))
+    PlotlyJS.savefig(P, "interactive_figures/$(params["modelid"])_FE_2D_visualisation_train_test.html")
+end
 
 function plot_interactive(trained_FE, params, patients, labels)
     trained_FE_mat = cpu(trained_FE.net[1][1].weight)
