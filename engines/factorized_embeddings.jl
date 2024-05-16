@@ -188,8 +188,9 @@ function train_embed_SGD!(params, X, Y, model)
     return tr_epochs, tr_loss, tr_cor
 end 
 
-function generate_patient_embedding(X, Y, params, tissue_labels)
+function generate_patient_embedding(X_data, patients, genes, params, tissue_labels)
     bson("$(params["outpath"])/$(params["modelid"])_params.bson", params)
+    X, Y = prep_FE(X_data, patients, genes);
     ## init model
     model = FE_model(params);
 
