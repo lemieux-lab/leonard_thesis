@@ -44,14 +44,14 @@ function prep_FE(data::Matrix,patients::Array,genes::Array, device=gpu)
     for i in 1:n
         for j in 1:m
             index = (i - 1) * m + j 
-            values[1,index] = data[i,j]
+            values[1,index] = data[i,j] # to debug 
             patient_index[index] = i # Int
             gene_index[index] = j # Int 
             # tissue_index[index] = tissues[i] # Int 
         end
     end 
     shfl = shuffle(collect(1:length(values)))
-    return (device(patient_index[shfl]), device(gene_index)[shfl]), device(vec(values[shfl]))
+    return (device(patient_index[shfl]), device(gene_index[shfl])), device(vec(values[shfl]))
     # return (device(patient_index), device(gene_index)), device(vec(values))
 
 end 
@@ -74,9 +74,9 @@ end
 #     return sum(p -> sum(abs2, p), ps)
 # end 
 
-function mse_l2(model::FE_model, X, Y;weight_decay = 1e-6)
-    return Flux.mse(model.net(X), Y) + l2_penalty(model) * weight_decay
-end 
+# function mse_l2(model::FE_model, X, Y;weight_decay = 1e-6)
+#     return Flux.mse(model.net(X), Y) + l2_penalty(model) * weight_decay
+# end 
 
 
 function FE_model(params::Dict)
@@ -135,7 +135,7 @@ function train_SGD!(params, X, Y, model; printstep = 1_000)
         ps = Flux.params(model.net)
         # dump_cb(model, params, iter + restart)
         gs = gradient(ps) do 
-            Flux.mse(model.net(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
+            Flux.mse(model.net(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps) ## loss
         end
         lossval = Flux.mse(model.net(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
         pearson = my_cor(model.net(X_), Y_)
