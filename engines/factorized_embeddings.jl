@@ -57,6 +57,7 @@ function prep_FE(data::Matrix,patients::Array,genes::Array, device=gpu)
 end 
 
 
+
 struct FE_model
     net::Flux.Chain
     embed_1::Flux.Embedding
@@ -74,9 +75,9 @@ end
 #     return sum(p -> sum(abs2, p), ps)
 # end 
 
-# function mse_l2(model::FE_model, X, Y;weight_decay = 1e-6)
-#     return Flux.mse(model.net(X), Y) + l2_penalty(model) * weight_decay
-# end 
+function mse_l2(model::FE_model, X, Y;weight_decay = 1e-6)
+    return Flux.mse(model.net(X), Y) + l2_penalty(model) * weight_decay
+end 
 
 
 function FE_model(params::Dict)
@@ -275,3 +276,25 @@ function do_inference(trained_FE, params, test_data, test_patients, genes; pre_t
     end 
     return inference_model
 end 
+function inference_2_0(infer_model, X_infer, Y_infer, train_ids, genes; batchsize = 400)
+    MSES = Array{Float32,1}(undef, length(train_ids));
+    EMBED1 = Array{Float32,1}(undef, length(train_ids));
+    EMBED2 = Array{Float32,1}(undef, length(train_ids));
+    #nminibatches = Int(floor(length(train_ids) / batchsize))    
+    for i in 1:Int(ceil(length(train_ids) / batchsize))
+        min_id = (i -1) * batchsize + 1
+        max_id = min(i * batchsize, length(train_ids))
+        II = (X_infer[1] .>= min_id) .& (X_infer[1] .<= max_id)
+        X_ = (X_infer[1][II],X_infer[2][II] )
+        Y_ =  Y_infer[II]
+        OUTS = infer_model(X_)
+        for j in 1:(max_id - min_id) + 1
+            span = collect((j - 1)  * length(genes) + 1 : j * length(genes))
+            MSES[min_id + j - 1] = cpu(Flux.mse(OUTS[span],Y_[span])) 
+        end  
+        EMBED1[collect(min_id:max_id)] .=  cpu(infer_model[1][1].weight)[1,collect(min_id:max_id)]
+        EMBED2[collect(min_id:max_id)] .=  cpu(infer_model[1][1].weight)[2,collect(min_id:max_id)]
+    end
+    DF = DataFrame("PID" => collect(1:length(train_ids)),"EMBED1" => EMBED1, "EMBED2"=>EMBED2,  "MSE" => MSES)
+    return DF
+end
