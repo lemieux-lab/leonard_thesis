@@ -115,7 +115,7 @@ function my_cor(X::AbstractVector, Y::AbstractVector)
     return cov / sigma_X / sigma_Y
 end 
 
-function train_SGD!(params, X, Y, model; printstep = 1_000)
+function train_SGD!(params, X, Y, model, labs; printstep = 1_000)
     start_timer = now()
     batchsize = params["batchsize"]
     nminibatches = Int(floor(length(Y) / batchsize))
@@ -151,6 +151,10 @@ function train_SGD!(params, X, Y, model; printstep = 1_000)
             CSV.write("$(params["outpath"])/$(params["modelid"])_loss_computing_times", DataFrame(:tr_epochs=>tr_epochs, :tr_loss=>tr_loss, :tr_elapsed=>tr_elapsed))
             # # save model 
             bson("$(params["outpath"])/$(params["modelid"])_in_training_model.bson", Dict("model"=> cpu(model.net)))
+            trained_patient_FE = cpu(model.net[1][1].weight)
+            patient_embed_fig = plot_tcga_patient_embedding(trained_patient_FE, labs, "trained 2-d embedding\n$(params["modelid"]) \n- step $(iter)") 
+            CairoMakie.save("$(params["outpath"])/$(params["modelid"])_2D_embedding_$(iter).png", patient_embed_fig)
+
         end 
     end
     # save model 
@@ -189,14 +193,14 @@ function train_embed_SGD!(params, X, Y, model)
     return tr_epochs, tr_loss, tr_cor
 end 
 
-function generate_patient_embedding(X_data, patients, genes, params, tissue_labels)
+function generate_patient_embedding(X_data, patients, genes, params, labs)
     bson("$(params["outpath"])/$(params["modelid"])_params.bson", params)
     X, Y = prep_FE(X_data, patients, genes);
     ## init model
     model = FE_model(params);
 
     # train loop
-    tr_epochs, tr_loss, tr_cor, tr_elapsed = train_SGD!(params, X, Y, model, printstep = params["printstep"])
+    tr_epochs, tr_loss, tr_cor, tr_elapsed = train_SGD!(params, X, Y, model, labs, printstep = params["printstep"])
 
     reconstruction_fig = plot_FE_reconstruction(model, X, Y, modelID=params["modelid"])
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_FE_reconstruction.pdf", reconstruction_fig)
@@ -206,7 +210,7 @@ function generate_patient_embedding(X_data, patients, genes, params, tissue_labe
     ## plotting embed directly 
     patient_embed_fig = Figure(size = (1024,800));
     trained_patient_FE = cpu(model.net[1][1].weight)
-    patient_embed_fig = plot_patient_embedding(trained_patient_FE, patient_embed_fig, tissue_labels, "trained 2-d embedding\n$(params["modelid"])", 1) 
+    patient_embed_fig = plot_patient_embedding(trained_patient_FE, patient_embed_fig, labs, "trained 2-d embedding\n$(params["modelid"])", 1) 
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.pdf", patient_embed_fig)
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.png", patient_embed_fig)
     

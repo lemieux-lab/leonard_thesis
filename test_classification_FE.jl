@@ -90,5 +90,16 @@ size(patient_FE)
 size(X_data)
 
 full_profile_outfile = test_classification_perf(Matrix(X_data'), labels)
+println(replace(full_profile_outfile, "\t" => ","))
+println(replace(outfile, "\t" => ","))
 
-println(full_profile_outfile)
+input1 = CSV.read("figures/tables/full_profile_classification.txt", DataFrame)
+input2 = CSV.read("figures/tables/FE_125_classification.txt", DataFrame)
+fig = Figure(size=(512,512));
+ax = Axis(fig[1,1], title ="Classification accuracy on TCGA",ylabel="Accuracy on test set", xticks=(collect(1:2), ["Full CDS profile", "FE Model (125D)"]));
+boxplot!(ax, ones(size(input1)[1]), input1.acc,label = "Full profile", show_outliers = false)
+scatter!(ax, rand(size(input1)[1]) / 5 .+ 0.9, input1.acc,markersize = 20, color = :white, strokewidth=2)
+boxplot!(ax, ones(size(input2)[1]) * 2, input2.acc,label = "FE (125D)", show_outliers = false)
+scatter!(ax, rand(size(input2)[1]) / 5 .+ 1.9, input2.acc,markersize = 20, color = :white, strokewidth=2)
+axislegend(ax)
+fig

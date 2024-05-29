@@ -92,3 +92,26 @@ function plot_FE_reconstruction(model, X, Y;modelID="")
     #resize_to_layout!(fig)
     return fig
 end 
+
+
+function generate_TGCA_colors_dict(labs)
+    tcga_abbrv = CSV.read("Data/GDC_processed/TCGA_abbrev.txt", DataFrame)
+    TCGA_colors_labels_df = innerjoin(DataFrame(:labs=>unique(labs), :abbrv=>unique([x[2] for x in split.(labs,"-")])), tcga_abbrv, on = :abbrv )
+    TCGA_colors_labels_df[:,"name"] .= ["$def (n=$(sum(labs .== lab)))" for (def, lab) in zip(TCGA_colors_labels_df[:,"def"], TCGA_colors_labels_df[:,"labs"] )]
+    TCGA_colors_labels_df[:,"hexcolor"] .= ["#$(hex(RGBf(rand(), rand(), rand())))" for i in 1:size(TCGA_colors_labels_df)[1]]
+    CSV.write("Data/GDC_processed/TCGA_colors_def.txt", TCGA_colors_labels_df)
+end 
+function plot_tcga_patient_embedding(patient_FE, labs, title)
+    TCGA_colors_labels_df = CSV.read("Data/GDC_processed/TCGA_colors_def.txt", DataFrame)
+    fig = Figure(size = (1500,800));
+    ax = Axis(fig[1,1], title = title);
+    # markers = [:diamond, :circle, :utriangle, :rect]
+    for (i, group_lab) in enumerate(unique(labs))
+        group = labs .== group_lab
+        col = TCGA_colors_labels_df[TCGA_colors_labels_df[:,"labs"] .== group_lab,"hexcolor"][1]
+        name = TCGA_colors_labels_df[TCGA_colors_labels_df[:,"labs"] .== group_lab,"name"][1]
+        scatter!(ax, patient_FE[1,group],patient_FE[2,group], strokewidth = 0.1, color = String(col), label = name)
+    end
+    fig[1,2] = axislegend(ax, position=:rc)
+    return fig
+end 

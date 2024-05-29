@@ -24,6 +24,7 @@ using XLSX
 using UMAP 
 using LinearAlgebra
 using CategoricalArrays
+using Colors
 
 # using JuBox 
 function set_dirs(basedir="./RES")
