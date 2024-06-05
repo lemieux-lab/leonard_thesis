@@ -115,6 +115,109 @@ function my_cor(X::AbstractVector, Y::AbstractVector)
     return cov / sigma_X / sigma_Y
 end 
 
+
+function train_SGD_accel_gpu!(params, X, Y, model, labs; printstep = 1_000)
+    ## X, Y => on GPU, then shuffle at each epoch, contiguous data access on GPU 
+    start_timer = now()
+    batchsize = params["batchsize"]
+    nminibatches = Int(floor(length(Y) / batchsize))
+    tr_loss, tr_epochs, tr_cor, tr_elapsed = [], [], [], []
+    opt = Flux.ADAM(params["lr"])
+    println("1 epoch 1 - 1 /$nminibatches - TRAIN \t ELAPSED: $((now() - start_timer).value / 1000 ) Shuffling ...")         
+        
+    # shuffled_ids = collect(1:length(Y)) # very inefficient
+    # X, Y = (X[1][shuffled_ids], X[2][shuffled_ids]), Y[shuffled_ids]
+    for iter in 1:params["nsteps"]
+        # Stochastic gradient descent with minibatches
+        cursor = (iter -1)  % nminibatches + 1
+        if cursor == 1 
+            shuffled_ids = shuffle(collect(1:length(Y))) # very inefficient
+            println("Shuffled!")
+            X, Y = (X[1][shuffled_ids], X[2][shuffled_ids]), Y[shuffled_ids]
+        end 
+        id_range = (cursor -1) * batchsize + 1:min(cursor * batchsize, length(Y))
+        X_, Y_ = (X[1][id_range],X[2][id_range]), Y[id_range]
+        ps = Flux.params(model.net)
+        # dump_cb(model, params, iter + restart)
+        gs = gradient(ps) do 
+            Flux.mse(model.net(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps) ## loss
+        end
+        lossval = Flux.mse(model.net(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
+        pearson = my_cor(model.net(X_), Y_)
+        Flux.update!(opt,ps, gs)
+        push!(tr_cor, pearson)
+        push!(tr_loss, lossval)
+        push!(tr_epochs, Int(ceil(iter / nminibatches)))
+        push!(tr_elapsed, (now() - start_timer).value / 1000 )
+        (iter % 100 == 0) | (iter == 1) ? println("$(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson ELAPSED: $((now() - start_timer).value / 1000 )") : nothing        
+            
+        if (iter % printstep == 0) 
+            CSV.write("$(params["outpath"])/$(params["modelid"])_loss_computing_times", DataFrame(:tr_epochs=>tr_epochs, :tr_loss=>tr_loss, :tr_elapsed=>tr_elapsed))
+            # # save model 
+            bson("$(params["outpath"])/$(params["modelid"])_in_training_model.bson", Dict("model"=> cpu(model.net)))
+            trained_patient_FE = cpu(model.net[1][1].weight)
+            patient_embed_fig = plot_tcga_patient_embedding(trained_patient_FE, labs, "trained 2-d embedding\n$(params["modelid"]) \n- step $(iter)") 
+            CairoMakie.save("$(params["outpath"])/$(params["modelid"])_2D_embedding_$(iter).png", patient_embed_fig)
+
+        end 
+    end
+    # save model 
+    bson("$(params["outpath"])/$(params["modelid"])_model_$(params["nsteps"]).bson", Dict("model"=> cpu(model.net)))
+    return tr_epochs, tr_loss, tr_cor, tr_elapsed
+end 
+
+
+function train_SGD_accel_cpu!(params, X, Y, model, labs; printstep = 1_000)
+    ## BUGGED 
+    ## X, Y => on CPU, then shuffle at each epoch 
+    ## At minibatch creation, load specific X_, Y_ on gpu
+    X, Y = cpu(X), cpu(Y)
+    start_timer = now()
+    batchsize = params["batchsize"]
+    nminibatches = Int(floor(length(Y) / batchsize))
+    tr_loss, tr_epochs, tr_cor, tr_elapsed = [], [], [], []
+    opt = Flux.ADAM(params["lr"])
+    println("1 epoch 1 - 1 /$nminibatches - TRAIN \t ELAPSED: $((now() - start_timer).value / 1000 ) Shuffling ...")         
+        
+    shuffled_ids = collect(1:length(Y)) # very inefficient
+    for iter in 1:params["nsteps"]
+        # Stochastic gradient descent with minibatches
+        cursor = (iter -1)  % nminibatches + 1
+        if cursor == 1 
+            shuffled_ids = shuffle(collect(1:length(Y))) # very inefficient
+        end 
+        mb_ids = collect((cursor -1) * batchsize + 1: min(cursor * batchsize, length(Y)))
+        ids = shuffled_ids[mb_ids]
+        X_, Y_ = gpu((X[1][ids],X[2][ids])), gpu(Y[mb_ids])
+        ps = Flux.params(model.net)
+        # dump_cb(model, params, iter + restart)
+        gs = gradient(ps) do 
+            Flux.mse(model.net(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps) ## loss
+        end
+        lossval = Flux.mse(model.net(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
+        pearson = my_cor(model.net(X_), Y_)
+        Flux.update!(opt,ps, gs)
+        push!(tr_cor, pearson)
+        push!(tr_loss, lossval)
+        push!(tr_epochs, Int(ceil(iter / nminibatches)))
+        push!(tr_elapsed, (now() - start_timer).value / 1000 )
+        (iter % 100 == 0) | (iter == 1) ? println("$(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson ELAPSED: $((now() - start_timer).value / 1000 )") : nothing        
+            
+        if (iter % printstep == 0) 
+            CSV.write("$(params["outpath"])/$(params["modelid"])_loss_computing_times", DataFrame(:tr_epochs=>tr_epochs, :tr_loss=>tr_loss, :tr_elapsed=>tr_elapsed))
+            # # save model 
+            bson("$(params["outpath"])/$(params["modelid"])_in_training_model.bson", Dict("model"=> cpu(model.net)))
+            trained_patient_FE = cpu(model.net[1][1].weight)
+            patient_embed_fig = plot_tcga_patient_embedding(trained_patient_FE, labs, "trained 2-d embedding\n$(params["modelid"]) \n- step $(iter)") 
+            CairoMakie.save("$(params["outpath"])/$(params["modelid"])_2D_embedding_$(iter).png", patient_embed_fig)
+
+        end 
+    end
+    # save model 
+    bson("$(params["outpath"])/$(params["modelid"])_model_$(params["nsteps"]).bson", Dict("model"=> cpu(model.net)))
+    return tr_epochs, tr_loss, tr_cor, tr_elapsed
+end 
+
 function train_SGD!(params, X, Y, model, labs; printstep = 1_000)
     start_timer = now()
     batchsize = params["batchsize"]
@@ -228,6 +331,7 @@ function generate_patient_embedding(X_data, patients, genes, params, labs)
 
     return model, tr_epochs,tr_loss, tr_cor
 end 
+
 function reset_embedding_layer(trained_FE, params, size)
     hlayers = deepcopy(trained_FE[2:end])
     test_FE = Flux.Chain(
