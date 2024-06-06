@@ -16,13 +16,13 @@ generate_params(X_data) = return Dict(
     ## run infos 
     "session_id" => session_id,  "modelid" =>  "$(bytes2hex(sha256("$(now())"))[1:Int(floor(end/3))])",
     "outpath"=>outpath, "machine_id"=>strip(read(`hostname`, String)), "device" => "$(device())",
-    "printstep"=>500, 
+    "printstep"=>100000, 
     ## data infos 
     "nsamples" =>size(X_data)[1], "ngenes"=> size(X_data)[2],  
     ## optim infos 
-    "lr" => 1e-2, "l2" => 1e-7,"nsteps" => 20000, "nsteps_inference" => 10_000, "batchsize" => 40_000,
+    "lr" => 1e-2, "l2" => 1e-7,"nsteps" => 100000, "nsteps_inference" => 10_000, "batchsize" => 40_000,
     ## model infos
-    "emb_size_1" => 2, "emb_size_2" => 50, "fe_layers_size"=> [25, 10], #, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
+    "emb_size_1" => 125, "emb_size_2" => 50, "fe_layers_size"=> [250, 75, 50, 25, 10], #, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
     ## plotting infos 
     "colorsFile"=> "Data/GDC_processed/BRCA_colors_def.txt"
     )
@@ -85,22 +85,23 @@ function test_classification_perf(X_data, labels;nsteps=2000)
     end 
     return outfile
 end 
-FE_outfile = test_classification_perf(patient_FE, labels)
-println(outfile)
-size(patient_FE)
-size(X_data)
+FE_outfile = test_classification_perf(patient_FE[:,labs .!= "NA"], labs[labs.!= "NA"]);
+FE_res = "figures/tables/BRCA_FE_125_classification.txt"
+write(FE_res, replace(FE_outfile, "\t" => ","))
 
-full_profile_outfile = test_classification_perf(Matrix(X_data'), labels)
-println(replace(full_profile_outfile, "\t" => ","))
-println(replace(outfile, "\t" => ","))
+full_profile_outfile = test_classification_perf(Matrix(X_data')[:,labs .!= "NA"], labs[labs .!= "NA"])
+FProfile_res = "figures/tables/BRCA_full_profile_classification.txt"
+write(FProfile_res, replace(full_profile_outfile, "\t" => ","))
 
-input1 = CSV.read("figures/tables/full_profile_classification.txt", DataFrame)
-input2 = CSV.read("figures/tables/FE_125_classification.txt", DataFrame)
+input1 = CSV.read("figures/tables/BRCA_full_profile_classification.txt", DataFrame)
+input2 = CSV.read("figures/tables/BRCA_FE_125_classification.txt", DataFrame)
 fig = Figure(size=(512,512));
-ax = Axis(fig[1,1], title ="Classification accuracy on TCGA",ylabel="Accuracy on test set", xticks=(collect(1:2), ["Full CDS profile", "FE Model (125D)"]));
+ax = Axis(fig[1,1], title ="Classification accuracy on BRCA",ylabel="Accuracy on test set", xticks=(collect(1:2), ["Full CDS profile", "FE Model (125D)"]));
 boxplot!(ax, ones(size(input1)[1]), input1.acc,label = "Full profile", show_outliers = false)
 scatter!(ax, rand(size(input1)[1]) / 5 .+ 0.9, input1.acc,markersize = 20, color = :white, strokewidth=2)
 boxplot!(ax, ones(size(input2)[1]) * 2, input2.acc,label = "FE (125D)", show_outliers = false)
 scatter!(ax, rand(size(input2)[1]) / 5 .+ 1.9, input2.acc,markersize = 20, color = :white, strokewidth=2)
 axislegend(ax)
-fig
+CairoMakie.save("figures/BRCA_classification_accuracy_FE_full_profile.pdf", fig)
+CairoMakie.save("figures/BRCA_classification_accuracy_FE_full_profile.png", fig)
+
