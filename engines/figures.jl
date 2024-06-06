@@ -63,17 +63,6 @@ function plot_interactive(trained_FE, params, patients, labels)
     PlotlyJS.savefig(P, "interactive_figures/$(params["modelid"])_FE_2D_visualisation.html")
 end 
 
-function plot_patient_embedding(patient_FE, fig, tissue_labels, title, i)
-    
-    ax2 = Axis(fig[1,i],title=title, xlabel = "Patient-FE-1", ylabel="Patient-FE-2", aspect = 1);
-    markers = [:diamond, :circle, :utriangle, :rect]
-    for (i, group_lab) in enumerate(unique(tissue_labels))
-        group = tissue_labels .== group_lab
-        scatter!(ax2, patient_FE[1,group],patient_FE[2,group], strokewidth = 0.1, color = RGBf(rand(), rand(), rand()), marker = markers[i%4 + 1], label = group_lab)
-    end 
-    fig[1,i+1] = axislegend(ax2, position =:rc, labelsize = 8, rowgap=0)
-    return fig
-end 
 
 function plot_FE_reconstruction(model, X, Y;modelID="")
     OUTS_ = model.net((X[1][1:500_000], X[2][1:500_000]))
@@ -101,15 +90,16 @@ function generate_TGCA_colors_dict(labs)
     TCGA_colors_labels_df[:,"hexcolor"] .= ["#$(hex(RGBf(rand(), rand(), rand())))" for i in 1:size(TCGA_colors_labels_df)[1]]
     CSV.write("Data/GDC_processed/TCGA_colors_def.txt", TCGA_colors_labels_df)
 end 
-function plot_tcga_patient_embedding(patient_FE, labs, title)
-    TCGA_colors_labels_df = CSV.read("Data/GDC_processed/TCGA_colors_def.txt", DataFrame)
-    fig = Figure(size = (1500,800));
+
+function plot_patient_embedding(patient_FE, labs, title, colorsFile)
+    colors_labels_df = CSV.read(colorsFile, DataFrame)
+    fig = Figure(size = (1024,800));
     ax = Axis(fig[1,1], title = title);
     # markers = [:diamond, :circle, :utriangle, :rect]
     for (i, group_lab) in enumerate(unique(labs))
         group = labs .== group_lab
-        col = TCGA_colors_labels_df[TCGA_colors_labels_df[:,"labs"] .== group_lab,"hexcolor"][1]
-        name = TCGA_colors_labels_df[TCGA_colors_labels_df[:,"labs"] .== group_lab,"name"][1]
+        col = colors_labels_df[colors_labels_df[:,"labs"] .== group_lab,"hexcolor"][1]
+        name = colors_labels_df[colors_labels_df[:,"labs"] .== group_lab,"name"][1]
         scatter!(ax, patient_FE[1,group],patient_FE[2,group], strokewidth = 0.1, color = String(col), label = name)
     end
     fig[1,2] = axislegend(ax, position=:rc)
