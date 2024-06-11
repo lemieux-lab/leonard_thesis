@@ -3,6 +3,8 @@ include("engines/factorized_embeddings.jl")
 include("engines/figures.jl")
 include("engines/data_processing.jl")
 include("engines/utils.jl")
+include("engines/gpu_utils.jl")
+device!()
 outpath, session_id = set_dirs("FE_RES")
 TCGA_data, labs, patients, genes, biotypes = load_tcga_dataset("Data/GDC_processed/TCGA_TPM_lab.h5")
 CDS = biotypes .== "protein_coding"
@@ -16,13 +18,15 @@ generate_params(X_data) = return Dict(
     ## run infos 
     "session_id" => session_id,  "modelid" =>  "$(bytes2hex(sha256("$(now())"))[1:Int(floor(end/3))])",
     "outpath"=>outpath, "machine_id"=>strip(read(`hostname`, String)), "device" => "$(device())",
-    "printstep"=>100, 
+    "printstep"=>1000, 
+    "colorsFile"=> "Data/GDC_processed/TCGA_colors_def.txt",
     ## data infos 
     "nsamples" =>size(X_data)[1], "ngenes"=> size(X_data)[2],  
+    "nsamples_batchsize"=> 4, 
     ## optim infos 
     "lr" => 1e-2, "l2" => 1e-7,"nsteps" => 100_000, "nsteps_inference" => 10_000, "batchsize" => 40_000,
     ## model infos
-    "emb_size_1" => 2, "emb_size_2" => 50, "fe_layers_size"=> [250, 75, 50, 25, 10]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
+    "emb_size_1" => 2, "emb_size_2" => 50, "fe_layers_size"=> [250,100,50]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
     )
 # train whole dataset 
 # params = generate_params(X_data)

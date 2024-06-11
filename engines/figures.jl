@@ -93,7 +93,7 @@ end
 
 function plot_patient_embedding(patient_FE, labs, title, colorsFile)
     colors_labels_df = CSV.read(colorsFile, DataFrame)
-    fig = Figure(size = (1024,800));
+    fig = Figure(size = (1024,1024));
     ax = Axis(fig[1,1], title = title);
     # markers = [:diamond, :circle, :utriangle, :rect]
     for (i, group_lab) in enumerate(unique(labs))
@@ -102,6 +102,6 @@ function plot_patient_embedding(patient_FE, labs, title, colorsFile)
         name = colors_labels_df[colors_labels_df[:,"labs"] .== group_lab,"name"][1]
         scatter!(ax, patient_FE[1,group],patient_FE[2,group], strokewidth = 0.1, color = String(col), label = name)
     end
-    fig[1,2] = axislegend(ax, position=:rc)
+    #fig[1,2] = axislegend(ax, position=:rc)
     return fig
 end 

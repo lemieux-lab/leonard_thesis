@@ -3,6 +3,7 @@ include("engines/factorized_embeddings.jl")
 include("engines/figures.jl")
 include("engines/data_processing.jl")
 include("engines/utils.jl")
+include("engines/pca.jl")
 outpath, session_id = set_dirs("FE_RES")
 BRCA_data, labs, patients, genes, biotypes = load_tcga_dataset("Data/TCGA_OV_BRCA_LGG/TCGA_BRCA_tpm_n1049_btypes_labels_surv.h5")
 CDS = biotypes .== "protein_coding"
@@ -93,15 +94,26 @@ full_profile_outfile = test_classification_perf(Matrix(X_data')[:,labs .!= "NA"]
 FProfile_res = "figures/tables/BRCA_full_profile_classification.txt"
 write(FProfile_res, replace(full_profile_outfile, "\t" => ","))
 
-input1 = CSV.read("figures/tables/BRCA_full_profile_classification.txt", DataFrame)
-input2 = CSV.read("figures/tables/BRCA_FE_125_classification.txt", DataFrame)
+X_tr_pca = fit_transform_pca(Matrix(X_data[labs .!= "NA",:]'), 125)
+PCA_outfile = test_classification_perf(X_tr_pca, labs[labs .!= "NA"])
+PCA_res = "figures/tables/BRCA_pca_125_classification.txt"
+write(PCA_res, replace(PCA_outfile, "\t" => ","))
+
+input1 = CSV.read(FProfile_res, DataFrame)
+input2 = CSV.read(FE_res, DataFrame)
+input3 = CSV.read(PCA_res, DataFrame)
+
 fig = Figure(size=(512,512));
-ax = Axis(fig[1,1], title ="Classification accuracy on BRCA",ylabel="Accuracy on test set", xticks=(collect(1:2), ["Full CDS profile", "FE Model (125D)"]));
+ax = Axis(fig[1,1], title ="Classification accuracy on BRCA",ylabel="Accuracy on test set", xticks=(collect(1:3), ["Full CDS profile", "FE Model (125D)", "PCA (125D)"]));
 boxplot!(ax, ones(size(input1)[1]), input1.acc,label = "Full profile", show_outliers = false)
 scatter!(ax, rand(size(input1)[1]) / 5 .+ 0.9, input1.acc,markersize = 20, color = :white, strokewidth=2)
 boxplot!(ax, ones(size(input2)[1]) * 2, input2.acc,label = "FE (125D)", show_outliers = false)
 scatter!(ax, rand(size(input2)[1]) / 5 .+ 1.9, input2.acc,markersize = 20, color = :white, strokewidth=2)
+boxplot!(ax, ones(size(input3)[1]) * 3, input3.acc,label = "PCA (125D)", show_outliers = false)
+scatter!(ax, rand(size(input3)[1]) / 5 .+ 2.9, input3.acc,markersize = 20, color = :white, strokewidth=2)
+
 axislegend(ax)
+fig
 CairoMakie.save("figures/BRCA_classification_accuracy_FE_full_profile.pdf", fig)
 CairoMakie.save("figures/BRCA_classification_accuracy_FE_full_profile.png", fig)
 
