@@ -14,7 +14,7 @@ X_data = TCGA_data[:,CDS]
 folds = split_train_test(X_data, nfolds = 5) # split 80-20
 train_ids, train_data, test_ids, test_data = folds[1]["train_ids"], folds[1]["train_x"], folds[1]["test_ids"], folds[1]["test_x"]
 # set params 
-generate_params(X_data) = return Dict( 
+generate_params(X_data;nsamples_batchsize=1) = return Dict( 
     ## run infos 
     "session_id" => session_id,  "modelid" =>  "$(bytes2hex(sha256("$(now())"))[1:Int(floor(end/3))])",
     "outpath"=>outpath, "machine_id"=>strip(read(`hostname`, String)), "device" => "$(device())",
@@ -22,11 +22,11 @@ generate_params(X_data) = return Dict(
     "colorsFile"=> "Data/GDC_processed/TCGA_colors_def.txt",
     ## data infos 
     "nsamples" =>size(X_data)[1], "ngenes"=> size(X_data)[2],  
-    "nsamples_batchsize"=> 4, 
+    "nsamples_batchsize"=> nsamples_batchsize, 
     ## optim infos 
-    "lr" => 1e-2, "l2" => 1e-7,"nsteps" => 100_000, "nsteps_inference" => 10_000, "batchsize" => 40_000,
+    "lr" => 1e-2, "l2" => 1e-7,"nsteps" => 100_000, "nsteps_inference" => 10_000, "batchsize" => size(X_data)[2] * nsamples_batchsize,
     ## model infos
-    "emb_size_1" => 2, "emb_size_2" => 50, "fe_layers_size"=> [250,100,50]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
+    "emb_size_1" => 2, "emb_size_2" => 50, "fe_layers_size"=> [150,100,50]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
     )
 # train whole dataset 
 # params = generate_params(X_data)
@@ -34,18 +34,21 @@ generate_params(X_data) = return Dict(
 # continue training on embedding layer only.
 # tr_epochs , tr_loss, tr_cor =  train_embed_SGD!(params, X,Y, trained_FE)
 
+model = FE_model(params)
+model.net[1]
 # train with training set
-params = generate_params(X_data)
+params = generate_params(X_data, nsamples_batchsize=4)
 # save IDs
 # bson("$(params["outpath"])/$(params["modelid"])_train_test_ids.bson", 
 #     Dict("train_ids"=> train_ids, "test_ids"=>test_ids, 
 #     "model_prefix"=> "$(params["outpath"])/$(params["modelid"])"))
 trained_FE,  tr_epochs , tr_loss, tr_cor =  generate_patient_embedding(X_data, patients, genes[CDS], params, labs)
+inference_model = do_inference(trained_FE.net, params,X_data,patients,genes[CDS])
 
-trained_patient_FE = cpu(trained_FE.net[1][1].weight)
+trained_patient_FE = cpu(inference_model[1][1].weight)
 TCGA_colors_labels_df = CSV.read("Data/GDC_processed/TCGA_colors_def.txt", DataFrame)
 
-patient_embed_fig = plot_tcga_patient_embedding(trained_patient_FE, labs, "trained 2-d embedding\n$(params["modelid"])") 
+patient_embed_fig = plot_patient_embedding(trained_patient_FE, labs, "trained 2-d embedding\n$(params["modelid"])", params["colorsFile"]) 
 CairoMakie.save("$(params["outpath"])/$(params["modelid"])_2D_embedding_$(iter).png", patient_embed_fig)
 # inference         
 #test_model = do_inference(trained_FE.net, params, test_data,  patients[test_ids], genes[CDS] )

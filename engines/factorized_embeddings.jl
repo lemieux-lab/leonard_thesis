@@ -86,7 +86,7 @@ function FE_model(params::Dict)
     emb_size_2 = params["emb_size_2"]
     a = emb_size_1 + emb_size_2 
     # b, c = params["fe_hl1_size"], params["fe_hl2_size"]#, params["fe_hl3_size"] ,params["fe_hl4_size"] ,params["fe_hl5_size"] 
-    emb_layer_1 = gpu(Flux.Embedding(params["nsamples"], emb_size_1))
+    emb_layer_1 = gpu(Flux.Embedding(zeros(emb_size_1,params["nsamples"])))
     emb_layer_2 = gpu(Flux.Embedding(params["ngenes"], emb_size_2))
     hlayers = []
     for (i,layer_size) in enumerate(params["fe_layers_size"][1:end])
