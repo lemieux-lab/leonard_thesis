@@ -81,7 +81,20 @@ function plot_FE_reconstruction(model, X, Y;modelID="")
     #resize_to_layout!(fig)
     return fig
 end 
-
+function output_labels_legend(params)
+    fig = Figure(size = (600,900));
+    ax = Axis(fig[1,1]);
+    colors_labels_df = CSV.read(params["colorsFile"], DataFrame)
+    for (i, group_lab) in enumerate(unique(labs))
+        group = labs .== group_lab
+        col = colors_labels_df[colors_labels_df[:,"labs"] .== group_lab,"hexcolor"][1]
+        name = colors_labels_df[colors_labels_df[:,"labs"] .== group_lab,"name"][1]
+        scatter!(ax,[1],[1], strokewidth = 0.1, color = String(col), label = name)
+    end
+    fig[1,2] = axislegend(ax, position = :rc)
+    fig
+    CairoMakie.save("figures/TCGA_cancer_types_colors.pdf", fig)
+end 
 
 function generate_TGCA_colors_dict(labs)
     tcga_abbrv = CSV.read("Data/GDC_processed/TCGA_abbrev.txt", DataFrame)
