@@ -1,3 +1,17 @@
+function gather_params(basedir=".")
+    df = DataFrame()
+    for (root, dirs, files) in walkdir(basedir)
+        for file in files
+            if occursin("params.bson",file)
+                # println("Loading $root/$file")
+                d = BSON.load("$root/$file")
+                push!(df, d, cols=:union)
+            end
+        end
+    end
+    return df
+end
+
 
 function split_train_test(X::Matrix; nfolds = 5)
     folds = Array{Dict, 1}(undef, nfolds)
