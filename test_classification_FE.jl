@@ -56,10 +56,10 @@ function test_classification_perf(X_data, labels;nsteps=2000)
     train_ids, train_x, test_ids, test_x = fold["train_ids"], gpu(Matrix(fold["train_x"])'), fold["test_ids"], gpu(Matrix(fold["test_x"]'))
     train_y = gpu(Matrix(Y')[:,train_ids])
     test_y = gpu(Matrix(Y')[:,test_ids])
-    model = gpu(Flux.Chain(Dense(size(train_x)[1], 250, leakyrelu), Dense(250, 100, leakyrelu),
-        Dense(100, 50, leakyrelu), Dense(50, outsize), softmax
+    model = gpu(Flux.Chain(Dense(size(train_x)[1], 100, leakyrelu), Dense(100, 50, leakyrelu),
+        Dense(50, outsize), softmax
         ))
-    opt = Flux.setup(OptimiserChain(Flux.WeightDecay(1e-6), Flux.Optimise.Adam(0.0001)), model);
+    opt = Flux.setup(OptimiserChain(Flux.WeightDecay(1e-8), Flux.Optimise.Adam(0.01)), model);
     for i in 1:nsteps
         grads = Flux.gradient(model) do m
             loss = sum(Flux.crossentropy(m(train_x), train_y))

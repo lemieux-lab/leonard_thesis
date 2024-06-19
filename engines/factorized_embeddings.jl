@@ -410,6 +410,8 @@ function generate_patient_embedding(X_data, patients, genes, params, labs)
     ## plotting embed directly 
     # patient_embed_fig = Figure(size = (1024,800));
     trained_patient_FE = cpu(model.net[1][1].weight)
+    trained_patient_FE_df = DataFrame(Dict([("embed_$i",trained_patient_FE[i,:]) for i in 1:params["emb_size_1"]]))
+    CSV.write("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.csv", trained_patient_FE_df)
     patient_embed_fig = patient_embed_fig = plot_patient_embedding(trained_patient_FE, labs, "trained final 2-d embedding\n$(params["modelid"])", params["colorsFile"]) 
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.pdf", patient_embed_fig)
     CairoMakie.save("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.png", patient_embed_fig)
