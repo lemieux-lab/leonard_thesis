@@ -17,13 +17,13 @@ generate_params(X_data) = return Dict(
     ## run infos 
     "session_id" => session_id,  "modelid" =>  "$(bytes2hex(sha256("$(now())"))[1:Int(floor(end/3))])",
     "outpath"=>outpath, "machine_id"=>strip(read(`hostname`, String)), "device" => "$(device())",
-    "printstep"=>100000, 
+    "printstep"=>1000, 
     ## data infos 
     "nsamples" =>size(X_data)[1], "ngenes"=> size(X_data)[2],  
     ## optim infos 
-    "lr" => 1e-2, "l2" => 1e-7,"nsteps" => 100000, "nsteps_inference" => 10_000, "batchsize" => 40_000,
+    "lr" => 1e-2, "l2" => 1e-5,"nsteps" => 30000, "nsteps_inference" => 10_000, "batchsize" => 40_000,
     ## model infos
-    "emb_size_1" => 125, "emb_size_2" => 50, "fe_layers_size"=> [250, 75, 50, 25, 10], #, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
+    "emb_size_1" => 2, "emb_size_2" => 1000, "fe_layers_size"=> [250, 100], #, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
     ## plotting infos 
     "colorsFile"=> "Data/GDC_processed/BRCA_colors_def.txt"
     )

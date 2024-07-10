@@ -25,7 +25,7 @@ generate_params(X_data;nsamples_batchsize=4) = return Dict(
     "nsamples" =>size(X_data)[1], "ngenes"=> size(X_data)[2],  
     "nsamples_batchsize"=> nsamples_batchsize, 
     ## optim infos 
-    "lr" => 1e-2, "l2" => 1e-5,"nsteps" => 100_000, "nsteps_inference" => 10_000, "batchsize" => nsamples_batchsize * size(X_data)[2],
+    "lr" => 1e-2, "l2" => 1e-7,"nsteps" => 100_000, "nsteps_inference" => 10_000, "batchsize" => nsamples_batchsize * size(X_data)[2],
     ## model infos
     "emb_size_1" => 2, "emb_size_2" => gene_embsize, "fe_layers_size"=> [100,50,50]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
     )
