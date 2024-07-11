@@ -42,49 +42,6 @@ patient_FE = cpu(trained_FE.net[1][1].weight)
 DF = DataFrame(Dict([("EMBED$(i)", patient_FE[i,:]) for i in 1:size(patient_FE)[1]]))
 CSV.write("$(params["outpath"])/$(params["modelid"])_patient_embed.csv", DF)
 
-function test_classification_perf(X_data, labels;nsteps=2000)
-    dimFE = size(X_data)[1] 
-    npatients = size(X_data)[2]
-    outsize = length(unique(labels))
-    Y = zeros( npatients, outsize)
-    unique_labs = unique(labels)
-    [Y[i, unique_labs .== lab] .= 1 for (i,lab) in enumerate(labels)]
-    Y_data_clf = gpu(Matrix(Y'))
-    folds = split_train_test(Matrix(X_data'), nfolds = 5) # split 80-20
-    outfile = "modelid\tfoldn\tacc\t"
-    ACCs = []
-    for (foldn, fold) in enumerate(folds)
-    train_ids, train_x, test_ids, test_x = fold["train_ids"], gpu(Matrix(fold["train_x"])'), fold["test_ids"], gpu(Matrix(fold["test_x"]'))
-    train_y = gpu(Matrix(Y')[:,train_ids])
-    test_y = gpu(Matrix(Y')[:,test_ids])
-    model = gpu(Flux.Chain(Dense(size(train_x)[1], 100, leakyrelu), Dense(100, 50, leakyrelu),
-        Dense(50, outsize), softmax
-        ))
-    opt = Flux.setup(OptimiserChain(Flux.WeightDecay(1e-8), Flux.Optimise.Adam(0.01)), model);
-    for i in 1:nsteps
-        grads = Flux.gradient(model) do m
-            loss = sum(Flux.crossentropy(m(train_x), train_y))
-        end 
-        outs = model(train_x)
-        tr_lossval = sum(Flux.crossentropy(outs, train_y))
-        tr_acc = sum((maximum(outs, dims = 1) .== outs)' .& (Int.(train_y))') / size(train_x)[2]
-        
-        tst_outs = model(test_x)
-        tst_lossval = Flux.mse(tst_outs, test_y)
-        tst_acc = sum((maximum(tst_outs, dims = 1) .== tst_outs)' .& (Int.(test_y))') / size(test_x)[2]
-        
-        Flux.update!(opt, model, grads[1])
-        if i % 1000 == 0
-            println("FOLDN $foldn - STEP $i - TRAIN : loss : $(tr_lossval) acc: $(tr_acc)\n TEST: loss: $(tst_lossval) acc: $(tst_acc)")
-        end
-    end
-    tst_outs = model(test_x)
-    ACC =  sum((maximum(tst_outs, dims = 1) .== tst_outs)' .& (Int.(test_y))') / size(test_x)[2]
-    push!(ACCs, ACC)
-    outfile = "$outfile\n$foldn\t$ACC\t"
-    end 
-    return ACCs
-end 
 model_params = gather_params("figures/tables/")
 model_params = model_params[model_params[:,"emb_size_2"] .!= 2,:]
 model_params = model_params[model_params[:,"l2"] .!= 1e-4,:]

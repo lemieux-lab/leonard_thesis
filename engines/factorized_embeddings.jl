@@ -460,18 +460,23 @@ function reset_embedding_layer_sample_init(FE_net, params, test_size)
     return test_FE    
 end 
 
-function do_inference(trained_FE, params, test_data, test_patients, genes; pre_trained_init = true)
-    X_test, Y_test = prep_FE(test_data, test_patients, genes);
+function do_inference(trained_FE, params, test_data, test_patients, genes)
+    # inference of test set
+    X_test, Y_test = prep_FE(test_data, test_patients,  genes, order = "per_sample");
     # reset patient embedding layer
-    pre_trained_init ? inference_model = reset_embedding_layer_sample_init(trained_FE, params, size(test_data)[1]) : inference_model = reset_embedding_layer(trained_FE, params, size(test_data)[1]) 
+    inference_model = reset_embedding_layer_sample_init(trained_FE, params, size(test_data)[1]) 
     # do inference 
-    batchsize = params["batchsize"]
+    start_timer = now()
+    nsamples_batchsize = params["nsamples_batchsize"]
+    batchsize = params["ngenes"] * nsamples_batchsize
     nminibatches = Int(floor(length(Y_test) / batchsize))
+    tst_elapsed = []
     opt = Flux.ADAM(params["lr"])
     for iter in 1:params["nsteps_inference"]
         cursor = (iter -1)  % nminibatches + 1
         mb_ids = collect((cursor -1) * batchsize + 1: min(cursor * batchsize, length(Y_test)))
         X_, Y_ = (X_test[1][mb_ids],X_test[2][mb_ids]), Y_test[mb_ids]
+        
         ps = Flux.params(inference_model[1][1])
         gs = gradient(ps) do 
             Flux.mse(inference_model(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
@@ -479,6 +484,7 @@ function do_inference(trained_FE, params, test_data, test_patients, genes; pre_t
         lossval = Flux.mse(inference_model(X_), Y_) + params["l2"] * sum(p -> sum(abs2, p), ps)
         pearson = my_cor(inference_model(X_), Y_)
         Flux.update!(opt,ps, gs)
+        push!(tst_elapsed, (now() - start_timer).value / 1000 )
         iter % 100 == 0 ?  println("$(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson ") : nothing
     end 
     return inference_model
