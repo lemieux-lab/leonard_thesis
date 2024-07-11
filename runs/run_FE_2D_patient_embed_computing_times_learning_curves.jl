@@ -23,7 +23,7 @@ generate_params(X_data) = return Dict(
     ## optim infos 
     "lr" => 1e-2, "l2" => 1e-7,"nsteps" => 20_000, "nsteps_inference" => 10_000, "batchsize" => 4_000,
     ## model infos
-    "emb_size_1" => 2, "emb_size_2" => 50, "fe_layers_size"=> [250, 75, 50, 25, 10]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
+    "emb_size_1" => 2, "emb_size_2" => 1000, "fe_layers_size"=> [250, 75, 50, 25, 10]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
     )
 # train whole dataset 
 # params = generate_params(X_data)
