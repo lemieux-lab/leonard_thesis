@@ -52,6 +52,7 @@ function test_classification_perf(X_data, labels;nsteps=2000)
     Y_data_clf = gpu(Matrix(Y'))
     folds = split_train_test(Matrix(X_data'), nfolds = 5) # split 80-20
     outfile = "modelid\tfoldn\tacc\t"
+    ACCs = []
     for (foldn, fold) in enumerate(folds)
     train_ids, train_x, test_ids, test_x = fold["train_ids"], gpu(Matrix(fold["train_x"])'), fold["test_ids"], gpu(Matrix(fold["test_x"]'))
     train_y = gpu(Matrix(Y')[:,train_ids])
@@ -73,22 +74,43 @@ function test_classification_perf(X_data, labels;nsteps=2000)
         tst_acc = sum((maximum(tst_outs, dims = 1) .== tst_outs)' .& (Int.(test_y))') / size(test_x)[2]
         
         Flux.update!(opt, model, grads[1])
-        if i % 100 == 0
+        if i % 1000 == 0
             println("FOLDN $foldn - STEP $i - TRAIN : loss : $(tr_lossval) acc: $(tr_acc)\n TEST: loss: $(tst_lossval) acc: $(tst_acc)")
         end
     end
     tst_outs = model(test_x)
     ACC =  sum((maximum(tst_outs, dims = 1) .== tst_outs)' .& (Int.(test_y))') / size(test_x)[2]
-    
-    outfile = "$outfile\n$(params["modelid"])\t$foldn\t$ACC\t"
+    push!(ACCs, ACC)
+    outfile = "$outfile\n$foldn\t$ACC\t"
     end 
-    return outfile
+    return ACCs
 end 
-FE_outfile = test_classification_perf(patient_FE, labels)
-println(outfile)
-size(patient_FE)
-size(X_data)
+model_params = gather_params("figures/tables/")
+model_params = model_params[model_params[:,"emb_size_2"] .!= 2,:]
+model_params = model_params[model_params[:,"l2"] .!= 1e-4,:]
 
+ACCs_table = []
+hyperparams = []
+for (row, emb_size_2) in enumerate(sort(unique(model_params[:,"emb_size_2"])))
+    for (col, l2_val) in enumerate(sort(unique(model_params[:, "l2"])))
+        group_data = (model_params[:,"emb_size_2"] .== emb_size_2) .& (model_params[:,"l2"] .== l2_val)
+        if sum(group_data) != 0
+            fname = model_params[group_data, "modelid"][1]
+                
+            data = CSV.read("figures/tables/$(fname)_trained_2D_factorized_embedding.csv", DataFrame)
+            patient_FE = Matrix(data)'
+            ACCs = test_classification_perf(patient_FE, labels)
+            print((l2_val,emb_size_2), "\t$(mean(ACCs))")
+            push!(hyperparams, (l2_val,emb_size_2))
+            push!(ACCs_table, ACCs)
+        end 
+    end 
+end 
+
+df = DataFrame(Matrix(reshape(mean.(ACCs_table), (5,6))'), :auto)
+names(df) .= string.(sort(unique(model_params[:,"l2"])))
+df[:,"emb_size_2"] .= string.(sort(unique(model_params[:,"emb_size_2"])))
+CSV.write("figures/tables/hypersearch_classif_acc_TCGA.csv", df)
 full_profile_outfile = test_classification_perf(Matrix(X_data'), labels)
 println(replace(full_profile_outfile, "\t" => ","))
 println(replace(outfile, "\t" => ","))
