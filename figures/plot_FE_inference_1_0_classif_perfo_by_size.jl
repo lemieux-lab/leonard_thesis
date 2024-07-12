@@ -17,7 +17,7 @@ fig = Figure(size = (512,512));
 ax = Axis(fig[1,1], title = "Average accuracy of cancer type prediction \nby number of nodes in the patient embedding layer", xlabel = "number of nodes in patient embedding layer", ylabel = "Accuracy", xticks = (collect(1:length(posit)),string.(emb_sizes_sorted)) );
 boxplot!(ax, Int.([posit[emb] for emb in results[:,"emb_size_1"]]), Float32.(results[:,"classif_ACC"]) * 100, show_outliers = false)
 scatter!(ax,  Int.([posit[emb] for emb in results[:,"emb_size_1"]]), Float32.(results[:,"classif_ACC"]) * 100,color = :white, strokewidth=2)
-text!(ax, collect(1:length(emb_sizes_sorted)) .- 0.2, means .+ 1, text = string.(means), fontsize = 18)
+text!(ax, collect(1:length(emb_sizes_sorted)) .- 0.2, means .+ 2, text = string.(means), fontsize = 18)
 fig
 CairoMakie.save("figures/FE_inference_1_0_classification_by_embed_size.pdf", fig)
 CairoMakie.save("figures/FE_inference_1_0_classification_by_embed_size.png", fig)

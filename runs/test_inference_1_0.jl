@@ -34,7 +34,7 @@ for foldn in 1:nfolds
         ## optim infos 
         "lr" => 1e-2, "l2" => 1e-8,"nsteps" => 100_000, "nsteps_inference" => 10_000, "batchsize" => nsamples_batchsize * size(X_data)[2],
         ## model infos
-        "emb_size_1" => 3, "emb_size_2" => 100, "fe_layers_size"=> [100,50,50]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
+        "emb_size_1" => 10, "emb_size_2" => 100, "fe_layers_size"=> [100,50,50]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
         )
     
     # train with training set
@@ -53,8 +53,8 @@ for foldn in 1:nfolds
 
     ACC = test_performance_FE(trained_FE, test_FE, labs, train_ids, test_ids)
     params["classif_ACC"] = ACC
-    dump_patient_FE_CSV(trained_FE.net, "_$(foldn)_train_$(params["emb_size_1"])D_factorized_embedding", params, labs, train_ids,outdir=outdir)
-    dump_patient_FE_CSV(test_FE, "_$(foldn)_inference_1_0_$(params["emb_size_1"])D_factorized_embedding", params, labs, test_ids,outdir=outdir)
+    dump_patient_FE_CSV(trained_FE.net, "$(foldn)_train_$(params["emb_size_1"])D_factorized_embedding", params, labs, train_ids,outdir=outdir)
+    dump_patient_FE_CSV(test_FE, "$(foldn)_inference_1_0_$(params["emb_size_1"])D_factorized_embedding", params, labs, test_ids,outdir=outdir)
 end 
 
 #dump_patient_FE_CSV(trained_FE.net, "_$(foldn)_train_2D_factorized_embedding", params, labs, train_ids,outdir="tmp")
