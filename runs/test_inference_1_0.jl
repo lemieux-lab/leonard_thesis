@@ -5,7 +5,7 @@ include("engines/data_processing.jl")
 include("engines/utils.jl")
 include("engines/gpu_utils.jl")
 include("engines/classification.jl")
-
+device!()
 outpath, session_id = set_dirs("FE_RES")
 TCGA_data, labs, patients, genes, biotypes = load_tcga_dataset("Data/GDC_processed/TCGA_TPM_lab.h5")
 labels = annotate_labels(labs, "Data/GDC_processed/TCGA_abbrev.txt")
@@ -17,8 +17,8 @@ nfolds = 5
 folds = split_train_test(X_data, nfolds = nfolds) # split 80-20
 ACCs = []
 modelid = "$(bytes2hex(sha256("$(now())"))[1:Int(floor(end/3))])"
-# outdir = "inference_1_0_FE_models"
-outdir = "tmp"
+outdir = "inference_1_0_FE_models"
+# outdir = "tmp"
 for foldn in 1:nfolds
     train_ids, train_data, test_ids, test_data = folds[foldn]["train_ids"], folds[foldn]["train_x"], folds[foldn]["test_ids"], folds[foldn]["test_x"]
     ## train for 80% 
@@ -26,15 +26,15 @@ for foldn in 1:nfolds
         ## run infos 
         "session_id" => session_id,  "modelid" =>  modelid,
         "outpath"=>outpath, "machine_id"=>strip(read(`hostname`, String)), "device" => "$(device())",
-        "printstep"=>1000, "foldn" => foldn,
+        "printstep"=>10000, "foldn" => foldn,
         "colorsFile"=> "Data/GDC_processed/TCGA_colors_def.txt",
         ## data infos 
         "nsamples" =>size(X_data)[1], "ngenes"=> size(X_data)[2],  
         "nsamples_batchsize"=> nsamples_batchsize, 
         ## optim infos 
-        "lr" => 1e-2, "l2" => 1e-8,"nsteps" => 100, "nsteps_inference" => 100, "batchsize" => nsamples_batchsize * size(X_data)[2],
+        "lr" => 1e-2, "l2" => 1e-8,"nsteps" => 100_000, "nsteps_inference" => 10_000, "batchsize" => nsamples_batchsize * size(X_data)[2],
         ## model infos
-        "emb_size_1" => 75, "emb_size_2" => 100, "fe_layers_size"=> [100,50,50]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
+        "emb_size_1" => 3, "emb_size_2" => 100, "fe_layers_size"=> [100,50,50]#, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
         )
     
     # train with training set
