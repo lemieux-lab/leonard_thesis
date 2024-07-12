@@ -24,7 +24,7 @@ emb_sizes_sorted = sort(unique(embsizes))
 posit = Dict([(embsize, i) for (i, embsize) in  enumerate(emb_sizes_sorted)])
 means = [round(mean(to_plot[to_plot[:,"emb_size"] .== emb, "speed"]), digits = 2) for emb in  emb_sizes_sorted]
 
-fig = Figure();
+fig = Figure(size = (512,712));
 ax = Axis(fig[1,1], title = "Total computing times by number of nodes in the gene embedding layer", ylabel = "time in minutes",  xticks = (collect(1:length(posit)),string.(emb_sizes_sorted)))
 scatter!(ax, Int.([posit[emb] for emb in embsizes]), Float32.(total_times) ./ 60 , )
 ax = Axis(fig[2,1], title = "Average speed of training by number of nodes in the gene embedding layer", xlabel = "number of nodes in gene embedding layer", ylabel = "average speed (iteration/second)", xticks = (collect(1:length(posit)),string.(emb_sizes_sorted)) );
