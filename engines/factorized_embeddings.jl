@@ -1,8 +1,8 @@
-function dump_patient_FE_CSV(model_net,modelname, params, labs, IDs;outdir = "models")
-    FE_df = DataFrame(Dict([("embed_$i",cpu(model_net[1][1].weight)[i,:]) for i in 1:params["emb_size_1"]]))
-    FE_df[:,"labels"] = labs[IDs]
-    FE_df[:,"id"] = IDs
-    CSV.write("$outdir/$(params["modelid"])_$(modelname).csv", FE_df)
+function dump_patient_embedding_CSV(model_net,modelname, params, labs, IDs;outdir = "models")
+    df = DataFrame(Dict([("embed_$i",model_net[i,:]) for i in 1:size(model_net)[1]]))
+    df[:,"labels"] = labs[IDs]
+    df[:,"id"] = IDs
+    CSV.write("$outdir/$(params["modelid"])_$(modelname).csv", df)
     bson("$outdir/$(params["modelid"])_$(modelname)_params.bson", params)
 end 
 struct MLSurvDataset
