@@ -29,7 +29,7 @@ for foldn in 1:nfolds
         ## model infos
         "min_dist" => 0.99, "n_neighbors" => 30, "n_components"=>dim_redux_size, 
         )
-    params = generate_umap_params(train_data; dim_redux_size = 25)
+    params = generate_umap_params(train_data; dim_redux_size = 75)
         
     start_timer = now()
     umap_model = UMAP_(Matrix(train_data'), params["n_components"] ; min_dist = params["min_dist"], n_neighbors = params["n_neighbors"]);    
