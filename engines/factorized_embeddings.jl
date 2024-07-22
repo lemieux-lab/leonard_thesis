@@ -339,7 +339,7 @@ function train_SGD_per_sample_optim!(params, X, Y, model, labs; printstep = 1_00
         # end 
         # id_range = (cursor -1) * batchsize + 1:min(cursor * batchsize, params["nsamples"])
         # ids = shuffled_ids[id_range]
-        batch_range = (cursor -1) * batchsize + 1 : min(cursor * batchsize, params["nsamples"] * batchsize)
+        batch_range = (cursor -1) * batchsize + 1 : cursor * batchsize
         X_, Y_ = (X[1][batch_range],X[2][batch_range]), Y[batch_range]
         ps = Flux.params(model.net)
         # dump_cb(model, params, iter + restart)
@@ -361,6 +361,7 @@ function train_SGD_per_sample_optim!(params, X, Y, model, labs; printstep = 1_00
             bson("$(params["outpath"])/$(params["modelid"])_in_training_model.bson", Dict("model"=> cpu(model.net)))
             trained_patient_FE = cpu(model.net[1][1].weight)
             patient_embed_fig = plot_patient_embedding(trained_patient_FE, labs, "trained 2-d embedding\n$(params["modelid"]) \n- step $(iter)", params["colorsFile"]) 
+            #patient_embed_fig = plot_patient_embedding(trained_patient_FE, labs, "trained 2-d embedding\n$(params["modelid"]) \n- step $(iter)", params["colorsFile"]) 
             CairoMakie.save("$(params["outpath"])/$(params["modelid"])_2D_embedding_$(iter).png", patient_embed_fig)
         end 
     end
@@ -450,6 +451,18 @@ function reset_embedding_layer(trained_FE, params, size)
     return test_FE    
 end 
 
+
+function reset_embedding_layer(FE_net, new_embed)
+    hlayers = deepcopy(FE_net[2:end])
+    test_FE = Flux.Chain(
+        Flux.Parallel(vcat, 
+            Flux.Embedding(new_embed),
+            deepcopy(FE_net[1][2])
+        ),
+        hlayers...
+    ) |> gpu
+    return test_FE    
+end 
 
 function reset_embedding_layer_sample_init(FE_net, params, test_size)
     hlayers = deepcopy(FE_net[2:end])

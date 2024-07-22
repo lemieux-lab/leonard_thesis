@@ -1,10 +1,10 @@
-function plot_train_test_patient_embed(trained_FE, test_model, labs, train_ids, test_ids)
+function plot_train_test_patient_embed(trained_FE, test_model, labs, train_ids, test_ids, params_dict)
     
     train_embed = cpu(trained_FE.net[1][1].weight)
     test_embed = cpu(test_model[1][1].weight)
 
     fig = Figure(size = (1024,800));
-    ax = Axis(fig[1,1],title="Train and Test patient embedding\n$(params["modelid"])", xlabel = "Patient-FE-1", ylabel="Patient-FE-2", aspect = 1);
+    ax = Axis(fig[1,1],title="Train and Test patient embedding\n$(params_dict["modelid"])", xlabel = "Patient-FE-1", ylabel="Patient-FE-2", aspect = 1);
     colors_labels_df = CSV.read("tables/TCGA_colors_def.txt", DataFrame)
     # first plot train embed with circles.
     for (i, group_lab) in enumerate(unique(labs))
@@ -20,7 +20,6 @@ function plot_train_test_patient_embed(trained_FE, test_model, labs, train_ids, 
         name = colors_labels_df[colors_labels_df[:,"labs"] .== group_lab,"name"][1]
         scatter!(ax, test_embed[1,group], test_embed[2,group], strokewidth = 1, color = String(col), label = name, marker = :utriangle)
     end 
-    fig 
     return fig 
 end 
 
