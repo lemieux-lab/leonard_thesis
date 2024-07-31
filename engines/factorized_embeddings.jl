@@ -1,9 +1,9 @@
-function dump_patient_embedding_CSV(model_net,modelname, params, labs, IDs;outdir = "models")
+function dump_patient_embedding_CSV(model_net,modelname, params_dict, labs, IDs;outdir = "models")
     df = DataFrame(Dict([("embed_$i",model_net[i,:]) for i in 1:size(model_net)[1]]))
     df[:,"labels"] = labs[IDs]
     df[:,"id"] = IDs
-    CSV.write("$outdir/$(params["modelid"])_$(modelname).csv", df)
-    bson("$outdir/$(params["modelid"])_$(modelname)_params.bson", params)
+    CSV.write("$outdir/$(params_dict["modelid"])_$(modelname).csv", df)
+    bson("$outdir/$(params_dict["modelid"])_$(modelname)_params.bson", params_dict)
 end 
 struct MLSurvDataset
     data::Matrix
@@ -509,25 +509,66 @@ function do_inference(trained_FE, params, test_data, test_patients, genes)
     end 
     return inference_model
 end 
-function inference_2_0(infer_model, X_infer, Y_infer, train_ids, genes; batchsize = 400)
-    MSES = Array{Float32,1}(undef, length(train_ids));
-    EMBED1 = Array{Float32,1}(undef, length(train_ids));
-    EMBED2 = Array{Float32,1}(undef, length(train_ids));
-    #nminibatches = Int(floor(length(train_ids) / batchsize))    
-    for i in 1:Int(ceil(length(train_ids) / batchsize))
-        min_id = (i -1) * batchsize + 1
-        max_id = min(i * batchsize, length(train_ids))
-        II = (X_infer[1] .>= min_id) .& (X_infer[1] .<= max_id)
-        X_ = (X_infer[1][II],X_infer[2][II] )
-        Y_ =  Y_infer[II]
-        OUTS = infer_model(X_)
-        for j in 1:(max_id - min_id) + 1
-            span = collect((j - 1)  * length(genes) + 1 : j * length(genes))
-            MSES[min_id + j - 1] = cpu(Flux.mse(OUTS[span],Y_[span])) 
-        end  
-        EMBED1[collect(min_id:max_id)] .=  cpu(infer_model[1][1].weight)[1,collect(min_id:max_id)]
-        EMBED2[collect(min_id:max_id)] .=  cpu(infer_model[1][1].weight)[2,collect(min_id:max_id)]
-    end
-    DF = DataFrame("PID" => collect(1:length(train_ids)),"EMBED1" => EMBED1, "EMBED2"=>EMBED2,  "MSE" => MSES)
-    return DF
-end
+
+function do_inference_B(trained_FE, train_data, train_ids, test_data, test_ids,  samples, genes, params_dict)
+    start_timer = now()
+    tst_elapsed = []
+    ## generate X and Y test data. 
+    X_train, Y_train = prep_FE(train_data, samples[train_ids], genes, order = "per_sample");
+    # out of memory!
+    # infered_train = reshape(trained_FE.net(X_train), (size(X_train)[1], size(CDS)[1]));
+    # size(infered_train)
+
+    nsamples_batchsize = 1
+    batchsize = params_dict["ngenes"] * nsamples_batchsize
+    nminibatches = Int(floor(params_dict["nsamples"] / nsamples_batchsize))
+    MM = zeros((size(train_data)))
+    println("Preparing infered train profiles matrix...")
+    for iter in 1:nminibatches
+        batch_range = (iter-1) * batchsize + 1 : iter * batchsize
+        X_, Y_ = (X_train[1][batch_range],X_train[2][batch_range]), Y_train[batch_range]
+        MM[iter, :] .= vec(cpu(trained_FE.net(X_)))
+    end 
+    infered_train = gpu(MM)
+    push!(tst_elapsed, (now() - start_timer).value / 1000 )
+    println("Infered train profiles matrix. $(tst_elapsed[end]) s")
+    println("Computing distances to target samples...")
+    new_embed = zeros(params_dict["emb_size_1"], size(test_data)[1])
+    test_data_G = gpu(test_data)
+    for infer_patient_id in 1:size(test_data)[1]
+        EuclideanDists = sum((infered_train .- vec(test_data_G[infer_patient_id, :])') .^ 2, dims = 2)
+        new_embed[:,infer_patient_id] .= cpu(trained_FE.net[1][1].weight[:,findfirst(EuclideanDists .== minimum(EuclideanDists))[1]])
+        if infer_patient_id % 100 == 0
+            println("completed: $(infer_patient_id * 100/ size(test_data)[1])%")
+        end 
+    end 
+    push!(tst_elapsed, (now() - start_timer).value / 1000 )
+    println("distances to target sample. $(tst_elapsed[end]) s")
+    println("Optimizing model with test samples optimal initial positions...")
+    inference_model = reset_embedding_layer(trained_FE.net, new_embed)
+    fig1 = plot_train_test_patient_embed(trained_FE, inference_model, labs, train_ids, test_ids, params_dict);
+    X_test, Y_test = prep_FE(test_data, samples[test_ids],  genes, order = "per_sample");
+    nsamples_batchsize = params_dict["nsamples_batchsize"]
+    batchsize = params_dict["ngenes"] * nsamples_batchsize
+    nminibatches = Int(floor(length(Y_test) / batchsize))
+    
+    opt = Flux.ADAM(params_dict["lr"])
+    for iter in 1:params_dict["nsteps_inference"]
+        cursor = (iter -1)  % nminibatches + 1
+        mb_ids = collect((cursor -1) * batchsize + 1: min(cursor * batchsize, length(Y_test)))
+        X_, Y_ = (X_test[1][mb_ids],X_test[2][mb_ids]), Y_test[mb_ids]
+        
+        ps = Flux.params(inference_model[1][1])
+        gs = gradient(ps) do 
+            Flux.mse(inference_model(X_), Y_) + params_dict["l2"] * sum(p -> sum(abs2, p), ps)
+        end
+        lossval = Flux.mse(inference_model(X_), Y_) + params_dict["l2"] * sum(p -> sum(abs2, p), ps)
+        pearson = my_cor(inference_model(X_), Y_)
+        Flux.update!(opt,ps, gs)
+        push!(tst_elapsed, (now() - start_timer).value / 1000 )
+        iter % 100 == 0 ?  println("$(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson \t elapsed: $(tst_elapsed[end]) s") : nothing
+    end 
+    println("Final embedding $(tst_elapsed[end]) s")
+    fig2 = plot_train_test_patient_embed(trained_FE, inference_model, labs, train_ids, test_ids, params_dict);
+    return inference_model, fig1, fig2
+end 
