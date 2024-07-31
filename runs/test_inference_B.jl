@@ -5,7 +5,7 @@ include("engines/data_processing.jl")
 include("engines/utils.jl")
 include("engines/gpu_utils.jl")
 include("engines/classification.jl")
-# device!()
+device!()
 outpath, session_id = set_dirs("FE_RES")
 TCGA_data, labs, patients, genes, biotypes = load_tcga_dataset("Data/GDC_processed/TCGA_TPM_lab.h5")
 labels = annotate_labels(labs, "Data/GDC_processed/TCGA_abbrev.txt")
@@ -19,7 +19,7 @@ ACCs = []
 modelid = "$(bytes2hex(sha256("$(now())"))[1:Int(floor(end/3))])"
 outdir = "inference_B_FE_models"
 # outdir = "tmp"
-for  embs2 in shuffle([10,25,50,75,100,1000])
+
 for foldn in 1:nfolds
     train_ids, train_data, test_ids, test_data = folds[foldn]["train_ids"], folds[foldn]["train_x"], folds[foldn]["test_ids"], folds[foldn]["test_x"]
     # set params 
@@ -39,7 +39,7 @@ for foldn in 1:nfolds
         )
 
     # train with training set
-    params_dict = generate_params(train_data, emb_size_1 = 32, emb_size_2 = embs2, nsamples_batchsize = 4)
+    params_dict = generate_params(train_data, emb_size_1 = 128, emb_size_2 = 75, nsamples_batchsize = 4)
 
     # save IDs
     bson("$(params_dict["outpath"])/$(params_dict["modelid"])_train_test_ids.bson", 
@@ -53,4 +53,3 @@ for foldn in 1:nfolds
     dump_patient_embedding_CSV(cpu(trained_FE.net[1][1].weight), "$(foldn)_train_$(params_dict["emb_size_1"])D_factorized_embedding", params_dict, labs, train_ids,outdir=outdir)
     dump_patient_embedding_CSV(cpu(inference_model[1][1].weight), "$(foldn)_inference_B_$(params_dict["emb_size_1"])D_factorized_embedding", params_dict, labs, test_ids,outdir=outdir)
 end 
-end
