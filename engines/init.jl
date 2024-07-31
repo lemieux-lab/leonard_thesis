@@ -25,6 +25,7 @@ using UMAP
 using LinearAlgebra
 using CategoricalArrays
 using Colors
+using GLM
 
 # using JuBox 
 function set_dirs(basedir="./RES")

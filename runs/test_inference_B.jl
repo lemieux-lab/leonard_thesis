@@ -39,7 +39,7 @@ for foldn in 1:nfolds
         )
 
     # train with training set
-    params_dict = generate_params(train_data, emb_size_1 = 2, emb_size_2 = embs2, nsamples_batchsize = 4)
+    params_dict = generate_params(train_data, emb_size_1 = 32, emb_size_2 = embs2, nsamples_batchsize = 4)
 
     # save IDs
     bson("$(params_dict["outpath"])/$(params_dict["modelid"])_train_test_ids.bson", 

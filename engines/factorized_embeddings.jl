@@ -539,7 +539,7 @@ function do_inference_B(trained_FE, train_data, train_ids, test_data, test_ids, 
         EuclideanDists = sum((infered_train .- vec(test_data_G[infer_patient_id, :])') .^ 2, dims = 2)
         new_embed[:,infer_patient_id] .= cpu(trained_FE.net[1][1].weight[:,findfirst(EuclideanDists .== minimum(EuclideanDists))[1]])
         if infer_patient_id % 100 == 0
-            println("completed: $(infer_patient_id * 100/ size(test_data)[1])%")
+            println("completed: $(round(infer_patient_id * 100/ size(test_data)[1], digits = 2))\t%")
         end 
     end 
     push!(tst_elapsed, (now() - start_timer).value / 1000 )
