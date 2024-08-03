@@ -17,7 +17,7 @@ foldn = 1
 
 for foldn in 1:nfolds
     train_ids, train_data, test_ids, test_data = folds[foldn]["train_ids"], folds[foldn]["train_x"], folds[foldn]["test_ids"], folds[foldn]["test_x"]
-    generate_pca_params(X_data; dim_redux_size = 2) = return Dict( 
+    generate_pca_params(X_data; dim_redux_size = 16) = return Dict( 
         ## run infos 
         "session_id" => session_id,  "modelid" =>  modelid,
         "outpath"=>outpath, "machine_id"=>strip(read(`hostname`, String)), "device" => "$(device())",

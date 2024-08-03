@@ -1,3 +1,20 @@
+function data_to_axis(ax, X, Y, X_means, Y_means, Y_std, lbl)
+    
+    errorbars!(ax, log2.(X_means), Y_means * 100, Y_std * 100, linewidth = 4, whiskerwidth = 10) 
+    # means 
+    scatter!(ax, log2.(X_means), Y_means * 100, markersize = 15, label = lbl)
+    # lines connecting
+    lines!(ax, log2.(sort(unique(X_means))), Y_means[sortperm(unique(X_means))] * 100,linewidth = 3,  linestyle=:dash)
+    # real points
+    scatter!(ax, log2.(X), Y * 100, color=:black, markersize = 5)
+    # show % values 
+    X_means_srt = sortperm(unique(X_means))
+    Y_vals = round.(Y_means[X_means_srt] * 100,digits = 2)
+    Y_posi = Y_means[X_means_srt] * 100 .+ Y_std[X_means_srt] * 100 .+ 2
+    # text!(ax, log2.(sort(X_means)) .- 0.15, Y_posi, text = string.(Y_vals), fontsize = 16)
+    return fig, ax
+end
+
 function plot_train_test_patient_embed(trained_FE, test_model, labs, train_ids, test_ids, params_dict)
     
     train_embed = cpu(trained_FE.net[1][1].weight)
