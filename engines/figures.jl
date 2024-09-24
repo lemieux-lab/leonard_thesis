@@ -17,12 +17,12 @@ end
 
 function plot_train_test_patient_embed(trained_FE, test_model, labs, train_ids, test_ids, params_dict)
     
-    train_embed = cpu(trained_FE.net[1][1].weight)
+    train_embed = cpu(trained_FE[1][1].weight)
     test_embed = cpu(test_model[1][1].weight)
 
     fig = Figure(size = (1024,800));
     ax = Axis(fig[1,1],title="Train and Test patient embedding\n$(params_dict["modelid"])", xlabel = "Patient-FE-1", ylabel="Patient-FE-2", aspect = 1);
-    colors_labels_df = CSV.read("tables/TCGA_colors_def.txt", DataFrame)
+    colors_labels_df = CSV.read(params_dict["colorsFile"], DataFrame)
     # first plot train embed with circles.
     for (i, group_lab) in enumerate(unique(labs))
         group = labs[train_ids] .== group_lab
@@ -86,7 +86,7 @@ end
 
 
 function plot_FE_reconstruction(model, X, Y;modelID="")
-    OUTS_ = model.net((X[1][1:500_000], X[2][1:500_000]))
+    OUTS_ = model((X[1][1:500_000], X[2][1:500_000]))
     Y_ = Y[1:500_000]
     pearson = my_cor(OUTS_, Y_)
     fig = Figure(size = (512,512));

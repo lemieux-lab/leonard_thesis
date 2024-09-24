@@ -338,7 +338,7 @@ function train_SGD_per_sample_optim!(params, X, Y, model, labs; printstep = 1_00
         if (iter % printstep == 0) 
             CSV.write("$(params["outpath"])/$(params["modelid"])_loss_computing_times", DataFrame(:tr_epochs=>tr_epochs, :tr_loss=>tr_loss, :tr_elapsed=>tr_elapsed))
             # # save model 
-            bson("$(params["outpath"])/$(params["modelid"])_in_training_model.bson", Dict("model"=> cpu(model.net)))
+            bson("$(params["outpath"])/$(params["modelid"])_in_training_model.bson", Dict("model"=> cpu(model)))
             trained_patient_FE = cpu(model[1][1].weight)
             patient_embed_fig = plot_patient_embedding(trained_patient_FE, labs, "trained 2-d embedding\n$(params["modelid"]) \n- step $(iter)", params["colorsFile"]) 
             #patient_embed_fig = plot_patient_embedding(trained_patient_FE, labs, "trained 2-d embedding\n$(params["modelid"]) \n- step $(iter)", params["colorsFile"]) 
@@ -346,7 +346,7 @@ function train_SGD_per_sample_optim!(params, X, Y, model, labs; printstep = 1_00
         end 
     end
     # save model 
-    bson("$(params["outpath"])/$(params["modelid"])_model_$(params["nsteps"]).bson", Dict("model"=> cpu(model.net)))
+    bson("$(params["outpath"])/$(params["modelid"])_model_$(params["nsteps"]).bson", Dict("model"=> cpu(model)))
     return tr_epochs, tr_loss, tr_cor, tr_elapsed
 end 
 
@@ -397,7 +397,7 @@ function generate_patient_embedding(X_data, patients, genes, params, labs)
 
     ## plotting embed directly 
     # patient_embed_fig = Figure(size = (1024,800));
-    trained_patient_FE = cpu(model.net[1][1].weight)
+    trained_patient_FE = cpu(model[1][1].weight)
     trained_patient_FE_df = DataFrame(Dict([("embed_$i",trained_patient_FE[i,:]) for i in 1:params["emb_size_1"]]))
     CSV.write("$(params["outpath"])/$(params["modelid"])_trained_2D_factorized_embedding.csv", trained_patient_FE_df)
     patient_embed_fig = patient_embed_fig = plot_patient_embedding(trained_patient_FE, labs, "trained final 2-d embedding\n$(params["modelid"])", params["colorsFile"]) 
@@ -494,11 +494,7 @@ function do_inference_B(trained_FE, train_data, train_ids, test_data, test_ids, 
     start_timer = now()
     tst_elapsed = []
     ## generate X and Y test data. 
-    X_train, Y_train = prep_FE(train_data, samples[train_ids], genes, order = "per_sample");
-    # out of memory!
-    # infered_train = reshape(trained_FE.net(X_train), (size(X_train)[1], size(CDS)[1]));
-    # size(infered_train)
-
+    X_train, Y_train = prep_FE(train_data, samples[train_ids], genes, order = "per_sample")
     nsamples_batchsize = 1
     batchsize = params_dict["ngenes"] * nsamples_batchsize
     nminibatches = Int(floor(params_dict["nsamples"] / nsamples_batchsize))
@@ -507,7 +503,7 @@ function do_inference_B(trained_FE, train_data, train_ids, test_data, test_ids, 
     for iter in 1:nminibatches
         batch_range = (iter-1) * batchsize + 1 : iter * batchsize
         X_, Y_ = (X_train[1][batch_range],X_train[2][batch_range]), Y_train[batch_range]
-        MM[iter, :] .= vec(cpu(trained_FE.net(X_)))
+        MM[iter, :] .= vec(cpu(trained_FE(X_)))
     end 
     infered_train = gpu(MM)
     push!(tst_elapsed, (now() - start_timer).value / 1000 )
@@ -517,7 +513,7 @@ function do_inference_B(trained_FE, train_data, train_ids, test_data, test_ids, 
     test_data_G = gpu(test_data)
     for infer_patient_id in 1:size(test_data)[1]
         EuclideanDists = sum((infered_train .- vec(test_data_G[infer_patient_id, :])') .^ 2, dims = 2)
-        new_embed[:,infer_patient_id] .= cpu(trained_FE.net[1][1].weight[:,findfirst(EuclideanDists .== minimum(EuclideanDists))[1]])
+        new_embed[:,infer_patient_id] .= cpu(trained_FE[1][1].weight[:,findfirst(EuclideanDists .== minimum(EuclideanDists))[1]])
         if infer_patient_id % 100 == 0
             println("completed: $(round(infer_patient_id * 100/ size(test_data)[1], digits = 2))\t%")
         end 
@@ -525,7 +521,7 @@ function do_inference_B(trained_FE, train_data, train_ids, test_data, test_ids, 
     push!(tst_elapsed, (now() - start_timer).value / 1000 )
     println("distances to target sample. $(tst_elapsed[end]) s")
     println("Optimizing model with test samples optimal initial positions...")
-    inference_model = reset_embedding_layer(trained_FE.net, new_embed)
+    inference_model = reset_embedding_layer(trained_FE, new_embed)
     fig1 = plot_train_test_patient_embed(trained_FE, inference_model, labs, train_ids, test_ids, params_dict);
     X_test, Y_test = prep_FE(test_data, samples[test_ids],  genes, order = "per_sample");
     nsamples_batchsize = params_dict["nsamples_batchsize"]
