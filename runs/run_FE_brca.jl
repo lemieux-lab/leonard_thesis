@@ -37,3 +37,8 @@ inference_model, part1_fig, part2_fig = do_inference_B(trained_FE, train_data, t
 
 # feed to COX-DNN
 # infer 
+tcga_datasets_list = ["Data/TCGA_datasets/$(x)" for x in readdir("Data/TCGA_OV_BRCA_LGG/") ]
+TCGA_datasets = load_tcga_datasets(tcga_datasets_list);
+BRCA_data = TCGA_datasets["BRCA"]
+LGG_data = TCGA_datasets["LGG"]
+OV_data = TCGA_datasets["OV"]
