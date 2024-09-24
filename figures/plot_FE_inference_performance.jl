@@ -44,7 +44,8 @@ fig, ax = data_to_axis(ax,
     "UMAP"); # lbl 
 pca_results = gather_params("inference_PCA_models")
 pca_mini_df = pca_results[:,["n_components", "foldn", "modelid","classif_ACC"]]
-pca_results = unique(pca_mini_df, view=true)
+keep = [in(x, [2,4,8,16,32,64,128,256]) for x in pca_mini_df[:,"n_components"]]
+pca_results = unique(pca_mini_df[keep,:], view=true)
 pca_stats = combine(groupby(pca_results,:n_components), "classif_ACC"=>mean, "classif_ACC"=>std)
 fig, ax = data_to_axis(ax, 
     pca_results[:,"n_components"], # X

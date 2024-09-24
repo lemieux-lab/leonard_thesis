@@ -1,3 +1,14 @@
+function load_tcga_mega_dataset(infilename)
+    inf = h5open(infilename, "r")
+    data = inf["data"][:,:]
+    genes = inf["genes"][:]
+    samples = inf["samples"][:]
+    labels = inf["labels"][:]
+    close(inf)
+    return data, labels, samples, genes
+end 
+
+
 function gather_params(basedir=".")
     df = DataFrame()
     for (root, dirs, files) in walkdir(basedir)

@@ -16,7 +16,7 @@ outdir = "inference_UMAP_models"
 for foldn in 1:nfolds
     train_ids, train_data, test_ids, test_data = folds[foldn]["train_ids"], folds[foldn]["train_x"], folds[foldn]["test_ids"], folds[foldn]["test_x"]
     
-    generate_umap_params(X_data; dim_redux_size = 2) = return Dict( 
+    generate_umap_params(X_data; dim_redux_size = 16) = return Dict( 
         ## run infos 
         "session_id" => session_id,  "modelid" =>  modelid,
         "outpath"=>outpath, "machine_id"=>strip(read(`hostname`, String)), "device" => "$(device())",
@@ -29,7 +29,7 @@ for foldn in 1:nfolds
         ## model infos
         "min_dist" => 0.99, "n_neighbors" => 30, "n_components"=>dim_redux_size, 
         )
-    params = generate_umap_params(train_data; dim_redux_size = 64)
+    params = generate_umap_params(train_data; dim_redux_size = 256)
         
     start_timer = now()
     umap_model = UMAP_(Matrix(train_data'), params["n_components"] ; min_dist = params["min_dist"], n_neighbors = params["n_neighbors"]);    
