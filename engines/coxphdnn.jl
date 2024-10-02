@@ -28,7 +28,18 @@ function concordance_index(T, E, S)
     return C_index, concordant, discordant, tied_pairs
 end
 
-function train_cphdnn!(cphdnn_params, cphdnn, x_train, y_e_train, NE_frac_tr, x_test, y_e_test, NE_frac_tst)
+function bootstrap(fn, T, E, S; n=10_000)
+    sample_size = length(T)
+    cs = zeros(n)
+    for i in 1:n 
+        sampling = sample(collect(1:sample_size), sample_size, replace=true)
+        cs[i],_,_,_ = fn(T[sampling], E[sampling], S[sampling])
+    end 
+    return cs
+end 
+
+
+function train_cphdnn!(cphdnn_params, cphdnn, x_train, y_t_train, y_e_train, NE_frac_tr, x_test, y_t_test, y_e_test, NE_frac_tst)
     opt = Flux.setup(OptimiserChain(Flux.WeightDecay(cphdnn_params["l2"]), Flux.Optimise.Adam(cphdnn_params["lr"])), cphdnn);
     tst_c_index, tst_scores = 0, [] 
     for stepn in 1:cphdnn_params["nsteps"]
@@ -47,3 +58,19 @@ function train_cphdnn!(cphdnn_params, cphdnn, x_train, y_e_train, NE_frac_tr, x_
     end 
     return tst_c_index, cphdnn(x_test)
 end
+
+function CPHDNN_eval(train_data, train_t, train_e, test_data, test_t, test_e)
+    # set cphdnn hyperparams 
+    cphdnn_params = cphdnn_params_dict(train_data)
+    # format data 
+    x_train, y_t_train, y_e_train, NE_frac_tr = format_surv_data(train_data, train_t, train_e)
+    x_test, y_t_test, y_e_test, NE_frac_tst = format_surv_data(test_data, test_t, test_e)
+
+    # init model 
+    cphdnn = Chain(Dense(cphdnn_params["insize"],cphdnn_params["cph_hl_size"], leakyrelu), 
+            Dense(cphdnn_params["cph_hl_size"], cphdnn_params["cph_hl_size"], leakyrelu), 
+            Dense(cphdnn_params["cph_hl_size"], 1, sigmoid,  bias = false)) |> gpu
+    # train loop 
+    tst_c_ind, tst_scores = train_cphdnn!(cphdnn_params, cphdnn, x_train, y_t_train, y_e_train, NE_frac_tr, x_test,y_t_test, y_e_test, NE_frac_tst)
+    return tst_c_ind, tst_scores, y_t_test, y_e_test
+end 
