@@ -7,6 +7,19 @@ include("engines/gpu_utils.jl")
 # device!()
 outpath, session_id = set_dirs("FE_RES")
 
+# display dataset sizes
+using DataFrames
+infile = readtable()
+filesizes = CSV.read("tables/TCGA_bootstrap_sizes.txt", DataFrame, delim=' ', ignorerepeated=true)
+bsize = [parse(Int, s[1:end-1]) for s in filesizes[:,5]]
+nsamples = [parse(Int, split(split(s,"_")[end],".")[1][1:end-1]) for s in filesizes[:,9]]
+fig = Figure(size = (512,512));
+ax = Axis(fig[1,1], xlabel = "number of samples", ylabel = "size (GB)", title = "Size in bytes of TCGA bootstraped datasets");
+lines!(ax, sort(nsamples * 10346), sort(bsize), linestyle = :dash)
+scatter!(ax, nsamples * 10346, bsize, markersize = 20)
+CairoMakie.save("figures/TCGA_bootstrap_sizes.png",fig)
+CairoMakie.save("figures/TCGA_bootstrap_sizes.pdf",fig)
+
 @time dat, lab, smpl, gns = load_tcga_mega_dataset("Data/TCGA_bootstrap/TCGA_poisson_raw_counts_10x.h5");
 shuffled_ids = shuffle(collect(1:size(smpl)[1]))
 @time X_data = dat[shuffled_ids,:] # pretty long!
