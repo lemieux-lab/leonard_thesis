@@ -5,6 +5,8 @@ include("engines/data_processing.jl")
 include("engines/utils.jl")
 include("engines/pca.jl")
 include("engines/coxphdnn.jl")
+include("engines/gpu_utils.jl")
+# CUDA.device!()
 outpath, session_id = set_dirs("CPHDNN_RES")
 BRCA_data, labs, samples, genes, biotypes = load_tcga_dataset("Data/TCGA_OV_BRCA_LGG/TCGA_BRCA_tpm_n1049_btypes_labels_surv.h5")
 CDS = biotypes .== "protein_coding"
@@ -13,16 +15,22 @@ survt = inf["survt"][:];
 surve = inf["surve"][:];
 close(inf)
 #FIXED VARIABLES
-embs = 2
+dim_redux_size = 256
+input_type = "FE"
+nsteps_FE = 100_000
+printstep_FE = 10_000 
+nsteps_CPHDNN = 150_000 
+printstep_CPHDNN = 10_000 
+
 generate_params(X_data, emb_size) = return Dict( 
     ## run infos 
     "session_id" => session_id,  "modelid" =>  "$(bytes2hex(sha256("$(now())"))[1:Int(floor(end/3))])",
     "outpath"=>outpath, "machine_id"=>strip(read(`hostname`, String)), "device" => "$(device())",
-    "printstep"=>10_000, 
+    "printstep"=>printstep_FE, 
     ## data infos 
     "nsamples" =>size(X_data)[1], "ngenes"=> size(X_data)[2],  
     ## optim infos 
-    "lr" => 1e-2, "l2" => 1e-8,"nsteps" => 100, "nsteps_inference" => 100, "nsamples_batchsize" => 4,
+    "lr" => 1e-2, "l2" => 1e-8,"nsteps" => nsteps_FE, "nsteps_inference" => Int(floor(nsteps_FE * 0.1)), "nsamples_batchsize" => 4,
     ## model infos
     "emb_size_1" => emb_size, "emb_size_2" => 100, "fe_layers_size"=> [250, 100], #, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
     ## plotting infos 
@@ -30,10 +38,13 @@ generate_params(X_data, emb_size) = return Dict(
     )
 
 cphdnn_params_dict(X_data) = Dict(
+    "session_id" => session_id,  "modelid" =>  "$(bytes2hex(sha256("$(now())"))[1:Int(floor(end/3))])",
+    "outpath"=>outpath, "machine_id"=>strip(read(`hostname`, String)), "device" => "$(device())",
+    "input_type"=>input_type, "model_type" => "CPHDNN",
     "insize" => size(X_data)[2],
     "cph_hl_size"=> 64,
-    "lr"=>1e-6, "l2"=>1e-3, "nsteps"=>2000,
-    "printstep"=>100,
+    "lr"=>1e-6, "l2"=>1e-3, "nsteps"=>nsteps_CPHDNN,
+    "printstep"=> printstep_CPHDNN,
 )
 
 # split data 
@@ -46,7 +57,7 @@ for fold in folds
     train_ids, train_data, test_ids, test_data = fold["train_ids"], fold["train_x"], fold["test_ids"], fold["test_x"]
     train_t, train_e, test_t, test_e  = survt[train_ids],  surve[train_ids], survt[test_ids], surve[test_ids]
     # train FE 
-    params_dict = generate_params(train_data, embs)
+    params_dict = generate_params(train_data, dim_redux_size)
     trained_FE,  tr_epochs , tr_loss, tr_cor =  generate_patient_embedding(train_data, samples[train_ids], genes[CDS], params_dict, labs[train_ids])
     # infer FE
     inference_model, part1_fig, part2_fig = do_inference_B(trained_FE, train_data, train_ids, test_data, test_ids, samples, genes[CDS], params_dict)
@@ -57,30 +68,6 @@ for fold in folds
     push!(tst_t_by_fold, cpu(vec(y_t_test)))
     push!(tst_e_by_fold, cpu(vec(y_e_test)))
 end 
-T, E, S = vcat(tst_t_by_fold...), vcat(tst_e_by_fold...), -1 * vcat(tst_scores_by_fold...)
-@time cs = bootstrap(concordance_index, gpu(T), gpu(E), gpu(S), n=10_000)
-CS = sort(cs)
-m = median(CS)
-up_95 = CS[Int(floor(size(CS)[1] * 0.975))]
-lo_95 = CS[Int(floor(size(CS)[1] * 0.025))]
-# infer
-# do inference. dump risk scores with surv.
+T, E, S = vcat(tst_t_by_fold...), vcat(tst_e_by_fold...), -1 * vcat(tst_scores_by_fold...);
+dump_surv_scores_c_index_bootstrap_h5(T, E, S, input_type, dim_redux_size)
 
-# compute final performance. Merge splits inference scores. bootstrap x 10000, plot distribution. (KM curve?)
-
-
-# X_data = TCGA_data[:,CDS]
-
-
-# 
-# Train
-
-# set params 
-
-# feed to COX-DNN
-# infer 
-tcga_datasets_list = ["Data/TCGA_datasets/$(x)" for x in readdir("Data/TCGA_OV_BRCA_LGG/") ]
-TCGA_datasets = load_tcga_datasets(tcga_datasets_list);
-BRCA_data = TCGA_datasets["BRCA"]
-LGG_data = TCGA_datasets["LGG"]
-OV_data = TCGA_datasets["OV"]

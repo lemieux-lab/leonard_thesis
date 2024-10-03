@@ -74,3 +74,23 @@ function CPHDNN_eval(train_data, train_t, train_e, test_data, test_t, test_e)
     tst_c_ind, tst_scores = train_cphdnn!(cphdnn_params, cphdnn, x_train, y_t_train, y_e_train, NE_frac_tr, x_test,y_t_test, y_e_test, NE_frac_tst)
     return tst_c_ind, tst_scores, y_t_test, y_e_test
 end 
+
+function dump_surv_scores_c_index_bootstrap_h5(T, E, S, input_type, dim_redux_size)
+    outf = h5open("$(outpath)/$(input_type)_$(dim_redux_size)_surv_scores_cphdnn.h5", "w")
+    outf["T"] = T
+    outf["E"] = E
+    outf["S"] = S
+    cs = bootstrap(concordance_index, gpu(T), gpu(E), gpu(S), n=10_000)
+    CS = sort(cs)
+    m = median(CS)
+    up_95 = CS[Int(floor(size(CS)[1] * 0.975))]
+    lo_95 = CS[Int(floor(size(CS)[1] * 0.025))]
+    outf["m"] = m
+    outf["up_95"] = up_95
+    outf["lo_95"] = lo_95
+    outf["nsteps_FE"] = nsteps_FE 
+    outf["nsteps_CPHDNN"] = nsteps_CPHDNN
+    outf["input_type"] = input_type 
+    outf["dim_redux_size"] = dim_redux_size
+    close(outf)
+end
