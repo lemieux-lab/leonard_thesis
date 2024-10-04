@@ -15,11 +15,11 @@ survt = inf["survt"][:];
 surve = inf["surve"][:];
 close(inf)
 #FIXED VARIABLES
-dim_redux_size = 256
+dim_redux_size = 64
 input_type = "FE"
-nsteps_FE = 100_000
+nsteps_dim_redux = 120
 printstep_FE = 10_000 
-nsteps_CPHDNN = 150_000 
+nsteps_CPHDNN = 100 
 printstep_CPHDNN = 10_000 
 
 generate_params(X_data, emb_size) = return Dict( 
@@ -30,7 +30,7 @@ generate_params(X_data, emb_size) = return Dict(
     ## data infos 
     "nsamples" =>size(X_data)[1], "ngenes"=> size(X_data)[2],  
     ## optim infos 
-    "lr" => 1e-2, "l2" => 1e-8,"nsteps" => nsteps_FE, "nsteps_inference" => Int(floor(nsteps_FE * 0.1)), "nsamples_batchsize" => 4,
+    "lr" => 1e-3, "l2" => 1e-8,"nsteps" => nsteps_dim_redux, "nsteps_inference" => Int(floor(nsteps_dim_redux * 0.1)), "nsamples_batchsize" => 4,
     ## model infos
     "emb_size_1" => emb_size, "emb_size_2" => 100, "fe_layers_size"=> [250, 100], #, "fe_hl1_size" => 50, "fe_hl2_size" => 50,
     ## plotting infos 
@@ -57,17 +57,21 @@ for fold in folds
     train_ids, train_data, test_ids, test_data = fold["train_ids"], fold["train_x"], fold["test_ids"], fold["test_x"]
     train_t, train_e, test_t, test_e  = survt[train_ids],  surve[train_ids], survt[test_ids], surve[test_ids]
     # train FE 
-    params_dict = generate_params(train_data, dim_redux_size)
-    trained_FE,  tr_epochs , tr_loss, tr_cor =  generate_patient_embedding(train_data, samples[train_ids], genes[CDS], params_dict, labs[train_ids])
+    FE_params_dict = generate_params(train_data, dim_redux_size)
+    trained_FE,  tr_epochs , tr_loss, tr_cor =  generate_patient_embedding(train_data, samples[train_ids], genes[CDS], FE_params_dict, labs[train_ids])
     # infer FE
-    inference_model, part1_fig, part2_fig = do_inference_B(trained_FE, train_data, train_ids, test_data, test_ids, samples, genes[CDS], params_dict)
+    inference_model, part1_fig, part2_fig = do_inference_B(trained_FE, train_data, train_ids, test_data, test_ids, samples, genes[CDS], FE_params_dict)
     #### CPHDNN eval 
     tst_c_ind, tst_scores, y_t_test, y_e_test = CPHDNN_eval(trained_FE[1][1].weight', train_t, train_e, inference_model[1][1].weight', test_t, test_e)
+    ### dump fold c-index     
+    FE_params_dict["c_ind_test"] = tst_c_ind
+    bson("$(FE_params_dict["outpath"])/$(FE_params_dict["modelid"])_params.bson", FE_params_dict)
+    
     push!(test_c_ind_by_fold, tst_c_ind)
     push!(tst_scores_by_fold, cpu(vec(tst_scores)))
     push!(tst_t_by_fold, cpu(vec(y_t_test)))
     push!(tst_e_by_fold, cpu(vec(y_e_test)))
 end 
 T, E, S = vcat(tst_t_by_fold...), vcat(tst_e_by_fold...), -1 * vcat(tst_scores_by_fold...);
-dump_surv_scores_c_index_bootstrap_h5(T, E, S, input_type, dim_redux_size)
+dump_surv_scores_c_index_bootstrap_h5(T, E, S, input_type, dim_redux_size, nsteps_dim_redux)
 
