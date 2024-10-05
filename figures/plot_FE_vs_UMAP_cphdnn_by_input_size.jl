@@ -1,6 +1,6 @@
 include("engines/init.jl")
 include("engines/figures.jl")
-
+include("engines/data_processing.jl")
 # gather all results 
 basedir = "CPHDNN_RES"
 median_lo_up_scores_FE = []
@@ -24,12 +24,11 @@ for (root, dirs, files) in walkdir(basedir)
 end 
 
 RUNS = gather_params(basedir)
-RUNS[ismissing.(RUNS[:,"modeltype"]) .!= 1,["n_epochs","c_ind_test","modeltype", "n_components"]]
-
-RUNS[:,"c_ind_test"] .> 0
+UMAP_res = RUNS[ismissing.(RUNS[:,"modeltype"]) .!= 1,["n_epochs","c_ind_test","modeltype", "n_components"]]
 fig = Figure(size = (512,512));
-ax = Axis(fig[1,1], xlabel = "input size", ylabel = "c-index")
-scatter!(ax, log2.(dr_sizes), Float32.([score[1] for score in median_lo_up_scores_FE]))
+ax = Axis(fig[1,1], xlabel = "input size", ylabel = "c-index", xticks=(log2.(sort(unique(UMAP_res[:,"n_components"]))), string.(sort(unique(UMAP_res[:,"n_components"])))) )
+boxplot!(ax, log2.(UMAP_res[:,"n_components"]), Float32.(UMAP_res[:,"c_ind_test"]))
+scatter!(ax, log2.(UMAP_res[:,"n_components"]), Float32.(UMAP_res[:,"c_ind_test"]))
 fig
 median_lo_up_scores_FE
 # filter 
