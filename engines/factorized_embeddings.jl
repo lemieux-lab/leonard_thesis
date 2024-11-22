@@ -333,7 +333,7 @@ function train_SGD_per_sample_optim!(params, X, Y, model, labs; printstep = 1_00
         push!(tr_loss, lossval)
         push!(tr_epochs, Int(ceil(iter / nminibatches)))
         push!(tr_elapsed, (now() - start_timer).value / 1000 )
-        (iter % 1000 == 0) | (iter == 1) ? println("FE $(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson ELAPSED: $((now() - start_timer).value / 1000 )") : nothing        
+        (iter % printstep == 0) | (iter == 1) ? println("FE $(iter) epoch $(Int(ceil(iter / nminibatches))) - $cursor /$nminibatches - TRAIN loss: $(lossval)\tpearson r: $pearson ELAPSED: $((now() - start_timer).value / 1000 )") : nothing        
             
         if (iter % printstep == 0) 
             CSV.write("$(params["outpath"])/$(params["modelid"])_loss_computing_times", DataFrame(:tr_epochs=>tr_epochs, :tr_loss=>tr_loss, :tr_elapsed=>tr_elapsed))
